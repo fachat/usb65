@@ -1,0 +1,68 @@
+
+usb65 - USB host and device drivers for the 6502
+------------------------------------------------
+
+This repository holds host and device drivers for 6502 processors. The aim is to make
+them generic enough so they can be reused in many 6502 computers.
+
+Currently supported functionalities:
+
+- Keyboard (host+device)
+- mouse (host+device)
+- hub (as host, can enumerate devices connected via a hub!)
+
+Currently supported hardware:
+
+- SL811HS (host+device) via processor bus interface
+- MAX3420 (device) via an SPI interface
+- MAX3421 (host+device - device is same as MAX3420) via an SPI interface
+
+Currently supported platforms:
+
+- CS/A "Fat40" PET replica with
+	- NETUSB 1.x board (2 SL811HS for host and device)
+	- NETUSB 2.x board (MAX3420 for device + MAX3421 for host)
+
+- Commodore PET with CS/A adapter 
+	- (tested only with NETUSB 1.x)
+
+Future plans:
+-------------
+
+- code cleanup
+	- more generic assembler
+	- extract common code
+	- separate platform specific code
+- more supported platforms
+- more functionalities
+	- RS232 via USB
+	- mass storage device (USB stick)
+	- Network (ethernet?) via USB
+
+Content
+-------
+
+- host/
+	USB host driver code
+- device/
+	UBS device driver code
+
+Note: that currently that's all there is, as those have been separately developed.
+There will be new subdirectories for:
+
+- platform/
+	hold the platform specific code
+- common/
+	separated out common code (e.g. for messages, or USB headers)
+
+
+Build note
+----------
+
+At this time you need the "xa65" cross assembler to build it (and its associated
+"reloc65" tool). And even more, you need the head of the "listing" branch on github:
+https://github.com/fachat/xa65/tree/listing
+
+You can then "make" the code in the host/ and device/ subdirectories
+
+
