@@ -1,0 +1,103 @@
+/*
+    (C) 2011 Andre Fachat
+
+    This file is part of the 6502 USB Host Driver.
+
+    The 6502 USB Host Driver is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The 6502 USB Host Driver is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    Lesser GNU General Public License for more details.
+
+    You should have received a copy of the Lesser GNU General Public License
+    along with the 6502 USB Host Driver. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/* USB hub descriptor; variable size due to variable size bitmaps at the end! */
+#define	DESC_HUB_LEN			0
+#define	DESC_HUB_TYPE			1
+#define	DESC_HUB_NPORTS			2	/* number of ports */
+#define	DESC_HUB_CHARACTERISTICS	3	/* 2 byte */
+#define	DESC_HUB_PWRON_2_PWRGOOD	5
+#define	DESC_HUB_CONTR_CURRENT		6
+/* first (nports+7)/8 byte, with a single bit per port whether it is removable */
+/* then (nports+7)/8 byte, with a single bit per port PortPwrCtrlMask */
+#define	DESC_HUB_BITMAPS		7
+
+/*
+ * below is 
+ * from Linux source drivers/usb/core/hub.h
+ * Most stuff is (currently) not used in the petusb
+ */
+
+/*
+ * Port feature numbers
+ * See USB 2.0 spec Table 11-17
+ */
+#define USB_PORT_FEAT_CONNECTION        0
+#define USB_PORT_FEAT_ENABLE            1
+#define USB_PORT_FEAT_SUSPEND           2       /* L2 suspend */
+#define USB_PORT_FEAT_OVER_CURRENT      3
+#define USB_PORT_FEAT_RESET             4
+#define USB_PORT_FEAT_L1                5       /* L1 suspend */
+#define USB_PORT_FEAT_POWER             8
+#define USB_PORT_FEAT_LOWSPEED          9
+/* This value was never in Table 11-17 */
+#define USB_PORT_FEAT_HIGHSPEED         10
+/* This value is also fake */
+#define USB_PORT_FEAT_SUPERSPEED        11
+#define USB_PORT_FEAT_C_CONNECTION      16
+#define USB_PORT_FEAT_C_ENABLE          17
+#define USB_PORT_FEAT_C_SUSPEND         18
+#define USB_PORT_FEAT_C_OVER_CURRENT    19
+#define USB_PORT_FEAT_C_RESET           20
+#define USB_PORT_FEAT_TEST              21
+#define USB_PORT_FEAT_INDICATOR         22
+#define USB_PORT_FEAT_C_PORT_L1         23
+
+/*
+ * wPortStatus bit field
+ * See USB 2.0 spec Table 11-21
+ */
+#define USB_PORT_STAT_CONNECTION        $0001
+#define USB_PORT_STAT_ENABLE            $0002
+#define USB_PORT_STAT_SUSPEND           $0004
+#define USB_PORT_STAT_OVERCURRENT       $0008
+#define USB_PORT_STAT_RESET             $0010
+#define USB_PORT_STAT_L1                $0020
+/* bits 6 to 7 are reserved */
+#define USB_PORT_STAT_POWER             $0100
+#define USB_PORT_STAT_LOW_SPEED         $0200
+#define USB_PORT_STAT_HIGH_SPEED        $0400
+#define USB_PORT_STAT_TEST              $0800
+#define USB_PORT_STAT_INDICATOR         $1000
+/* bits 13 to 15 are reserved */
+
+/*
+ * wPortChange bit field
+ * See USB 2.0 spec Table 11-22
+ * Bits 0 to 4 shown, bits 5 to 15 are reserved
+ */
+#define USB_PORT_STAT_C_CONNECTION      $0001
+#define USB_PORT_STAT_C_ENABLE          $0002
+#define USB_PORT_STAT_C_SUSPEND         $0004
+#define USB_PORT_STAT_C_OVERCURRENT     $0008
+#define USB_PORT_STAT_C_RESET           $0010
+#define USB_PORT_STAT_C_L1              $0020
+
+/*
+ * Hub Status & Hub Change bit masks
+ * See USB 2.0 spec Table 11-19 and Table 11-20
+ * Bits 0 and 1 for wHubStatus and wHubChange
+ * Bits 2 to 15 are reserved for both
+ */
+#define HUB_STATUS_LOCAL_POWER  $0001
+#define HUB_STATUS_OVERCURRENT  $0002
+#define HUB_CHANGE_LOCAL_POWER  $0001
+#define HUB_CHANGE_OVERCURRENT  $0002
+
+

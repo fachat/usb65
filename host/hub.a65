@@ -1,0 +1,697 @@
+/*
+    (C) 2011 Andre Fachat
+
+    This file is part of the 6502 USB Host Driver.
+
+    The 6502 USB Host Driver is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The 6502 USB Host Driver is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    Lesser GNU General Public License for more details.
+
+    You should have received a copy of the Lesser GNU General Public License
+    along with the 6502 USB Host Driver. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/*
+ * hub functionality driver
+ */
+
+/*
+ * This is the external interface for the hub:
+ *
+ * hub_init
+ *	initializes the hub functionality, clears all tables
+ *	returns clc on ok, sec on err with error code in AC
+ *
+ * hub_register_device
+ *	register a device as a hub. Called from usb_cb_detected
+ * 	in AC has slot number. out has clc on ok, sec on err with error code in AC
+ *	calls usb_register_poll_cb with poll_data to register a poll callback
+ *	
+ *
+ */
+
+#include "hub.i65"
+
+	.(
+
+	.data
+
+	; change bitmask for hub 
+;chgm_h	.byt 1	 - currently not used
+	; ports 1-7 (change report bit mask)
+chgm_p	.byt 2,4,8,16,32,64,128
+
+
+;------------------------------------------------------------------------------------------
+; host poll register struct (modified in place)
+
+poll_data 
+	.byt 0			; endpoint number
+	.byt 0			; transparent poll function data
+	.word 0			; max packet length from EP descriptor
+	.word hub_poll_cb	; hub poll callback function
+
+;------------------------------------------------------------------------------------------
+; the following HOST_CTRL_* structs are used in various requests to the hub
+; Some have a USB control request attached, others not
+; Those requests are modified in place!
+
+; set a feature. host control block plus 8 byte USB setup message. buffer addr is not used (tx size 0)
+; code will overwrite set feature with clear feature when needed (and vice versa)
+setfeat .byt 0, 0, 0, 0
+	.word 0			; EP max packet length per tx (from EP descriptor)
+	.word 0			; transfer length (possibly multiple tx)
+	.word 0			; buffer
+	.byt $23 
+	.byt USB_REQ_SET_FEATURE ; SET_FEATURE
+	.word USB_PORT_FEAT_POWER ; feature number
+	.word 0			; index, i.e. port number, to be set
+	.word 0			; data transfer length (always 0)
+
+; Get hub descriptor
+gethubdesc
+	.byt 0, 0, 0, 0
+	.word 0			; EP max packet length per tx (from EP descriptor)
+	.word MAX_PACKET	; transfer length (possibly multiple tx)
+	.word buffer		; data stage transfer buffer
+        .byt $a0
+	.byt USB_REQ_GET_DESCRIPTOR
+	.byt $00, $01
+	.byt $00, $00
+	.word MAX_PACKET	; data stage requested number of bytes
+
+getportstat
+	.byt 0, 0, 0, 0
+	.word 0			; EP max packet length per tx (from EP descriptor)
+	.word 4			; transfer length (possibly multiple tx)
+	.word status		; data stage tx buffer
+	.byt $a3
+	.byt USB_REQ_GET_STATUS
+	.word 0			; value
+	.word 0			; port (set by routine)
+	.word 4			; data transfer length
+
+; get some data from interrupt 
+getdata .byt 0, 0, 0, HOST_FLAG_IGNORE_NAK
+	.word 0			; EP max packet length per tx (from EP descriptor)
+	.word 8			; transfer length (possibly multiple tx)
+	.word status
+
+	.bss
+
+status	.dsb 8, 0		; status buffer (8 byte, but only 4 byte used, i.e. up to 7 ports)
+
+;------------------------------------------------------------------------------------------
+
+
+#define	MAX_HUB		2	/* currently supported max number of hubs */
+#define	MAX_PORT	7	/* max number of ports per hub (single status change byte) */
+curhub	.byt 0			; index of current hub in following tables
+curport	.byt 0			; current port for port enumeration
+
+hubslot	.dsb MAX_HUB, 0		; device slot for hub in usb tables
+hubcslot .dsb MAX_HUB, 0	; control slot for hub in usb tables
+hubst	.dsb MAX_HUB, 0		; status of table entry $80=needs enumeration; $c0 is enumerated
+numport .dsb MAX_HUB, 0		; number of ports for each hub
+changes	.dsb MAX_HUB, 0		; change bits per hub, set by reading the hub interrupt endpoint
+				; cleared by the poll (outside the hub_register though)
+
+
+; port state for all ports, all hubs
+; the poll function uses the "changed" bits from above
+; to poll the hubs, then use this array to store port state
+; 
+; indexed by hub number times 8 plus port number
+; port number zero is hub state (not yet implemented)
+;
+; values with bit 7 set is no device
+; $80 = after power up
+; $81 = no device present
+; $82 = device detected, reset sent
+; ...
+; values with bit 7 cleared are device numbers
+;
+portstate .dsb MAX_HUB * 8, 0
+
+	.text
+
+; init the hub-related tables and variables
+&hub_init .(
+	ldy #0
+	tya
+l	sta hubst,y
+	iny
+	cpy #MAX_HUB
+	bne l
+	clc
+	rts
+	.)
+
+; get the index for a free hub table entry
+; return it in yr and store it in curhub on success (clc)
+get_idx .(
+	ldy #0
+l	lda hubst,y
+	bpl ok
+	iny
+	cpy #MAX_HUB
+	bne l
+	sec
+	rts
+ok	clc
+	rts
+	.)
+
+; poll the hub devices
+; called from the poll loop in usb.a65. 
+; input in AC the transparent data given in hub_register, xr the slot,
+; input carry set then command number in YR, carry clear is standard poll
+;
+; transparent slot data is here used as index in the hub table, so one call per hub
+; returns clc on success
+; returns sec when device gives error, then the main loop
+; takes the hub out!
+hub_poll_cb .(
+#ifdef DEBUG_POLL
+	DENTER("HUB_POLL")
+#endif
+	bcc normal_poll
+	cpy #HOST_POLL_DETACHED
+	bne ignore
+	DMSG("DETACH HUB")
+	tay
+	lda #$00
+	sta hubst,y
+ignore	clc
+	rts
+normal_poll
+	tay		; transparent payload from hub_register	
+	lda hubst,y
+	clc		; prepare bpl
+	bpl noenum
+	sty curhub
+	and #$40	; check enum flag
+	bne p		; yes, already enumerated, then just poll
+	jsr enum_hub	; needs curhub in yr
+	bcs noenum	; error while enumeration
+	ldy curhub
+	lda hubst,y
+	ora #$40
+	sta hubst,y
+p	jsr poll_hub	; requires y holds hub index
+noenum
+#ifdef DEBUG_POLL	
+	DEXIT("HUB_POLL")
+#endif
+	rts
+	.)
+
+poll_hub .(
+	ldx hubslot,y
+	lda #<getdata
+	ldy #>getdata
+	jsr usb_get
+	bcc got
+	; ignore, as we get a NAK when no interrupt
+	; data is available
+	bcs process_changes
+got
+	; support 7 ports only (single status byte, bit 0 is hub)
+	lda status
+	ldy curhub
+	ora changes,y
+	sta changes,y
+
+	; process the change bits by looping over them,
+	; getting the status of each changed port, clearing the 
+	; int status, possibly registering/deregistering new devices, ...
+process_changes	
+	; port enum here starts with 0 instead of 1 as on the USB
+	lda #0
+	sta curport
+check_port
+	ldy curhub	; current hub
+	ldx curport	; current port
+	lda chgm_p,x	; change bit for current port (starts with 2, as bit 0 is hub)
+	and changes,y	; is set on curren hub?
+	beq next_port	; yes, then do port
+	jsr do_port
+
+	; clear change bit
+	ldy curhub
+	ldx curport
+	lda chgm_p,x
+	eor #$ff
+	and changes,y
+	sta changes,y
+next_port
+	inc curport	; next port
+	lda curport
+	ldy curhub
+	cmp numport,y
+	bne check_port
+	clc
+	rts
+	.)
+
+; process a single port
+; this actually implements the state engine for the
+; hub port
+do_port	.(
+	DDEBUG(lda curport)
+	DENTER("DO_PORT")
+
+	ldy curhub
+	ldx hubcslot,y
+	ldy curport
+	iny
+	sty getportstat + HOST_CTRL_SETUP + 4
+	lda #<getportstat
+	ldy #>getportstat
+	jsr usb_control		; this also sets up the control structure with usb_prepare_ctrl
+	bcc gotportst
+	DEXIT("DO_PORT Y")
+	rts
+gotportst
+	lda status+2	; low byte port change status word
+	and #USB_PORT_STAT_C_CONNECTION
+	beq no_con_change
+	; acknowlege connection change
+	lda #USB_PORT_FEAT_C_CONNECTION
+	jsr clear_port_feature
+no_con_change
+	lda status+2	; low byte port change status word
+	and #USB_PORT_STAT_C_ENABLE
+	beq no_enable_change
+	lda #USB_PORT_FEAT_C_ENABLE
+	jsr clear_port_feature
+no_enable_change
+	lda status	; low byte port status word
+	and #USB_PORT_STAT_CONNECTION
+	bne connected
+
+	; port is disconnected
+	jsr get_port_idx
+	lda portstate,y
+	bpl newdisconnect
+	lda #$80		; clear ignore bit (bit 6)
+	sta portstate,y		; it's disabled, so on next connect, do not ignore it
+	clc
+	DEXIT("DO_PORT D")
+	rts
+	; device has been disconnected
+newdisconnect
+	lda curhub
+	pha
+	lda curport
+	pha
+	lda portstate,y
+	jsr usb_detach_device	; recursively call disable callbacks
+	pla
+	sta curport
+	pla
+	sta curhub
+
+	lda #$80
+	sta portstate,y
+	jsr disable_port
+	clc
+	rts
+
+	; port is connected
+connected
+	; check if we also think it's connected
+	jsr get_port_idx
+	lda portstate,y
+	bmi newconnect
+	clc
+	DEXIT("DO_PORT X")
+	rts
+	; we think it's not yet connected, so we process it
+newconnect
+	and #$40	; disable bit - if set, we failed to scan it and ignore it now
+	beq no_ignore
+	clc
+	rts
+no_ignore
+	; enable port
+	lda #USB_PORT_FEAT_ENABLE
+	jsr set_port_feature
+check_enable
+	lda #2
+	jsr pause	; needed?
+
+	jsr dogetportstat		; not usb_control, as control structure is already setup from above
+	bcs abortc
+
+	lda status
+	and #USB_PORT_STAT_CONNECTION
+	beq abortx	; device has been disconnected
+	lda status
+	and #USB_PORT_STAT_ENABLE
+	beq check_enable
+
+	; reset the port
+	lda #USB_PORT_FEAT_RESET	; hub automatically clears
+	jsr set_port_feature		; reset condition when it's done
+	
+	lda #5				; 100ms
+	jsr pause
+
+check_reset
+	jsr dogetportstat		; not usb_control, as control structure is already setup from above
+abortc	bcs abort
+
+	lda status
+	and #USB_PORT_STAT_CONNECTION + USB_PORT_STAT_ENABLE
+	cmp #USB_PORT_STAT_CONNECTION + USB_PORT_STAT_ENABLE
+	bne abort
+	lda status + 2
+	and #USB_PORT_STAT_C_RESET
+	bne reset_done
+
+	lda #2
+	jsr pause
+	jmp check_reset
+abortx	beq abort	
+reset_done
+	; clear reset done change flag
+	lda #USB_PORT_FEAT_C_RESET
+	jsr clear_port_feature
+
+check_reset2
+	jsr dogetportstat	; not usb_control, as control structure is already setup from above
+	bcs abort
+
+	lda status + 2
+	and #USB_PORT_STAT_C_RESET
+	beq reset_done2
+
+	lda #2
+	jsr pause
+	jmp check_reset2
+reset_done2
+	; get speed
+	lda status+1
+	and #6
+	cmp #2
+	beq low
+	ldx #1			; full speed
+	.byt $2c
+low	ldx #0			; low speed
+	ldy curhub
+	lda hubslot,y	
+	jsr usb_get_fnaddr	; parent device number into ac (and parent speed in y), preserves xr
+
+	jsr usb_init_device	; this may only call into hub_register (req. parent in ac, speed in xr)
+	bcc initok		; returns device number in AC if success (clc)
+abort	pha
+	DMSG("ABORT PORT")
+	; disable port as we don't handle this device
+	jsr disable_port
+
+	jsr get_port_idx
+	lda #$c0
+	sta portstate,y		; set disable bit, so we do not scan that port again
+	pla
+	DEXIT("DO_PORT X")
+	sec
+	rts
+initok	pha
+	jsr get_port_idx
+	pla
+	sta portstate,y
+	clc
+	DEXIT("DO_PORT")
+	rts
+	.)
+
+disable_port .(
+	lda #USB_PORT_FEAT_ENABLE
+	jsr clear_port_feature
+check_disable
+	jsr dogetportstat	; not usb_control, as control structure is already setup from above
+	bcs abort2
+
+	lda status
+	and #USB_PORT_STAT_ENABLE
+	bne check_disable
+abort2	rts
+	.)
+
+dogetportstat .(
+	lda #<getportstat
+	ldy #>getportstat
+	jmp usb_host_control	; not usb_control, as control structure is already setup from above
+	.)
+
+get_port_idx .(
+	lda curhub
+	asl
+	asl
+	asl
+	clc
+	adc curport
+	tay
+	rts
+	.)
+
+;--------------------------------------------------------------
+
+; register a hub, called from usb_cb_detected callback, when
+; device descriptor has shown it is a hub
+; gets configuration, sets up poll with fnaddr and endpoint
+; addresses
+; in AC has (temporary) slot number for getconf etc
+; calls usb_register_poll_cb, which returns the final slot for each
+; registered endpoint
+; out clc on ok, AC bit 7 is set when control slot is needed
+;
+; Note that this may be called from within enum_hub (via usb_cb_detected,
+; for hubs attached downstream of the currently polled hub!)
+; so we must not disturb the saved state of the hub_poll ... enum_hub
+; functions. Thus we save curhub on the stack here and not use curport
+&hub_register_device .(
+	pha
+	jsr get_idx	; get free hub slot
+	bcc gotidx
+	pla
+	lda #ERR_RESOURCE_HUB
+	rts
+gotidx
+
+	lda #$80
+	sta hubst,y	; init state such that next poll goes to enum_hub
+	pla
+	sta hubslot,y	; temporary slot number
+	sta hubcslot,y	; control slot number
+
+	lda curhub	; save state 
+	pha
+	sty curhub	; new (temporary) hub number
+
+	jsr check_register
+
+	ldy curhub
+	DMSG("X CHECK REG")
+
+	sta hubslot,y	; save new slot
+	bcc ok
+	
+	lda #0
+	sta hubst,y	; clear hub slot
+ok
+	pla
+	sta curhub
+	
+	lda #HOST_REGISTER_CTRL_USED
+	clc
+	rts
+	.)
+
+check_register .(
+	lda hubcslot,y
+	jsr usbgen_getset_conf
+	bcc gotconf
+	DEXIT("CHECK_REGISTER X")
+	rts
+gotconf
+	jsr usbgen_next_desc
+	DMSG("_NEXT_DESC")
+	bcs uk2
+
+	cmp #DESC_TYPE_INTERFACE
+	bne uk2
+	; now ptr is interface descriptor
+
+       	jsr usbgen_next_desc
+	DMSG("_NEXT_DESC")
+	bcs uk2
+
+	cmp #DESC_TYPE_ENDPOINT
+uk2	beq uk3
+	jmp unknown
+uk3
+	; now ptr is endpoint descriptor
+
+	; ok, here we (think we) have a hub class device with 
+	; class 9, subclass 0, proto 0. Note that high speed devices
+	; may come with proto 1, which we don't handle yet
+	
+	ldy #DESC_EP_ATTR
+	lda (ptr),y
+	cmp #3		; "interrupt" endpoint
+	bne unknown
+
+	; ok, here we are sure that the current endpoint descriptor
+	; is the interrupt endpoint we are looking for - register poll callback
+	ldy #DESC_EP_ADDR
+	lda (ptr),y
+	and #$0f	; endpoint
+	sta poll_data + HOST_POLL_ENDPOINT
+	
+	ldy #DESC_EP_MAX_PACKET_SIZE
+	lda (ptr),y
+	sta poll_data + HOST_POLL_MAXPKLEN
+	iny
+	lda (ptr),y
+	sta poll_data + HOST_POLL_MAXPKLEN + 1
+
+	lda curhub
+	sta poll_data + HOST_POLL_DATA
+
+	lda #<poll_data
+	ldy #>poll_data
+	; this call returns with CLC when we were able to register the IN endpoint
+	; and with SEC if there was an error.
+	jmp usb_register_poll_cb	
+
+unknown	DMSG("CHECK HUB X")
+	lda #ERR_UNKNOWN_DEVICE
+	sec
+	rts
+	.)
+
+; enumerate the hub
+enum_hub .(
+	DENTER("ENUM_HUB")
+	; get hub class descriptor
+	; needs custom getdesc code, as first byte of setup is different
+	lda #DESC_TYPE_HUB_CL
+	sta gethubdesc + HOST_CTRL_SETUP + 3
+	lda #0
+	sta gethubdesc + HOST_CTRL_SETUP + 2
+	ldx hubcslot,y
+	lda #<gethubdesc
+	ldy #>gethubdesc
+	jsr usb_control
+        bcc gothubdesc
+	rts
+gothubdesc
+ldx #<buffer
+ldy #>buffer
+jsr print_hex_buffer
+
+	lda buffer + DESC_HUB_NPORTS		; number of ports
+	cmp #MAX_PORT		 
+ 	bcc portok
+	lda #MAX_PORT
+portok	ldy curhub
+	sta numport,y
+
+	; power up ports
+	lda #0
+	sta curport
+ploop
+	jsr send_power_on
+	inc curport
+	lda curport
+	ldy curhub
+	cmp numport,y
+	bne ploop
+
+	; wait till power good
+	lda #5			; 5 times 20ms
+	jsr pause
+
+	; disable ports so enum is undisturbed
+	lda #0
+	sta curport
+ploop2
+	lda #USB_PORT_FEAT_ENABLE
+	jsr clear_port_feature
+	inc curport
+	lda curport
+	ldy curhub
+	cmp numport,y
+	bne ploop2
+
+	ldy curhub
+	lda #$80
+	sta hubst,y		; notify for hub_poll
+
+	clc
+	DEXIT("ENUM_HUB")
+noconf	rts
+	.)
+
+
+; send the port feature "POWER" to the port given in curhub and curport
+; port number enumeration starts at 0!
+; requires hub number in y 
+send_power_on .(
+	DDEBUG(lda curhub:ldx curport)
+	DMSG("SEND_POWER_ON")
+
+	lda curhub	; hub number mult by 8
+	asl		; to get index in port
+	asl
+	asl
+	clc
+	adc curport	; add current port
+	tay
+	lda #$80	; initial state for port
+	sta portstate,y
+
+	lda #USB_PORT_FEAT_POWER
+	jmp set_port_feature
+	.)
+
+; clear/set a port feature
+; ac has feature (e.g. USB_PORT_FEAT_POWER)
+; curport has port number, curhub the current hub index
+clear_port_feature .(
+	clc
+	.byt $24
+&set_port_feature 
+	sec
+	php
+	sta setfeat + HOST_CTRL_SETUP + 2	; feature
+	ldx curport
+	inx
+	stx setfeat + HOST_CTRL_SETUP + 4	; store in control msg (low byte only)
+	ldy curhub
+	ldx hubcslot,y				; x must hold slot number for usb_control below
+	lda #USB_REQ_CLEAR_FEATURE
+	plp
+	bcc clr
+	lda #USB_REQ_SET_FEATURE
+clr 	sta setfeat + HOST_CTRL_SETUP + 1
+	lda #0
+	sta setfeat + HOST_CTRL_SETUP + 5
+	sta setfeat + HOST_CTRL_SETUP + 3
+	lda #<setfeat
+	ldy #>setfeat
+	jsr usb_control
+	rts
+	.)
+
+	.)
+
+

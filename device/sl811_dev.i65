@@ -1,0 +1,124 @@
+/*
+    (C) 2011 Andre Fachat
+
+    This file is part of the 6502 USB Device Driver.
+
+    The 6502 USB Device Driver is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The 6502 USB Device Driver is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    Lesser GNU General Public License for more details.
+
+    You should have received a copy of the Lesser GNU General Public License
+    along with the 6502 USB Device Driver. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/*
+ * requires SL811_HOST to be set to the respective
+ * base addresses
+ */
+
+#ifndef SL811_HOST_I65
+#define SL811_HOST_I65
+
+#define NUM_ENDPOINTS   4
+
+/*#define	SL811_HOST	$ec98*/
+/*#define	SL811_DEVICE	$ec90*/
+
+; SL811 I/O addresses - Host
+#define	SL811D_REG   	SL811_DEVICE
+#define	SL811D_DATA  	SL811_DEVICE+1
+
+#define	STREGD(reg)	ldx #reg:jsr storeregd
+#define	LDREGD(reg)	ldx #reg:jsr loadregd
+#define	STREGXD()	jsr storeregd
+#define	STREGYD()	jsr storeregdy
+
+#define	SL811D_DEVCTL	5	/* main control register (write only), device mode */
+#define	SL811D_IRQEN	6	/* interrupt enable */
+#define	SL811D_USBADDR	7	/* USB address */
+#define	SL811D_INTSTAT	13	/* interrupt status (write: enable, read is status) */
+#define	SL811D_CURDSET	14	/* current data set register */
+#define	SL811D_CTRL2	15	/* control register 2 */
+
+#define	STD_DEVCTL	STREGD(SL811D_DEVCTL)
+#define	STD_INTSTAT	STREGD(SL811D_INTSTAT)
+#define	STD_CURDSET	STREGD(SL811D_CURDSET)
+#define	STD_CTRL2	STREGD(SL811D_CTRL2)
+#define	LDD_INTSTAT	LDREGD(SL811D_INTSTAT)
+
+; endpoint specific registers
+
+#define	EPA_CTRL	0
+#define	EPA_ADDR	1
+#define	EPA_LEN		2
+#define	EPA_PKSTAT	3
+#define	EPA_XFERCNT	4
+
+#define	EPB_CTRL	8
+#define	EPB_ADDR	9
+#define	EPB_LEN		10
+#define	EPB_PKSTAT	11
+#define	EPB_XFERCNT	12
+
+#define	EP0_OFFSET	$10
+#define	EP1_OFFSET	$10
+#define	EP2_OFFSET	$20
+#define	EP3_OFFSET	$30
+
+; bit mask for host control register EPCTL
+#define EPCTL_ARM       $01	/* arm the endpoint registers for tx, enabled but not armed sends NAK */
+#define EPCTL_ENABLE    $02	/* if not enabled, ignore tx; if enabled use ARM to find if to send NAK or data */
+#define EPCTL_RX        $00	/* receive from HOST (HOST OUT) */
+#define EPCTL_TX        $04	/* send to HOST (HOST IN) */
+#define	EPCTL_NEXTDSET  $08	/* what data set to use after this operation */
+#define EPCTL_ISOCH     $10	/* allow isochronous mode */
+#define EPCTL_STALL	$20	/* send a STALL in response to next request */
+#define EPCTL_SEQ	$40	/* sequence bit for data */
+/* bit 7 is reserved */
+
+/* same as in HOST */
+#ifndef PKSTAT_ACK
+#define	PKSTAT_ACK	$01
+#define	PKSTAT_ERROR	$02
+#define	PKSTAT_TIMEOUT	$04
+#define	PKSTAT_SEQ	$08
+#define	PKSTAT_SETUP	$10
+#define	PKSTAT_OVERFL	$20
+/* #define	PKSTAT_NAK	$40	 ignored in device */
+/* #define	PKSTAT_STALL	$80	 ignored in device */
+#endif
+
+; control reg 1 (main control, reg 5) masks
+#define DEVCTL_ENABLE    $01
+#define DEVCTL_NORMAL    $01
+#define DEVCTL_LSPD      $20	/* set for low speed */
+#define DEVCTL_STANDBY   $40
+
+; relevant bits in the interrupt status register
+#define INT_EP0DONE   $01
+#define INT_EP1DONE   $02
+#define INT_EP2DONE   $04
+#define INT_EP3DONE   $08
+#define INT_SOFRX     $20	/* SOF received */
+#define INT_USBRES    $40	/* USB reset */
+
+; current data set register CURDSET values
+#define	DSET_EP0	$01
+#define	DSET_EP1	$02
+#define	DSET_EP2	$04
+#define	DSET_EP3	$08
+
+; control reg 2 masks (same as HOST)
+#ifndef CTLREG2_DSWAP
+#define CTLREG2_DSWAP     $40	/* set for low speed */
+#define CTLREG2_HOST      $80
+#endif
+
+#endif
+

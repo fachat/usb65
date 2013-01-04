@@ -1,0 +1,34 @@
+/*
+    (C) 2011 Andre Fachat
+
+    This file is part of the 6502 USB Device Driver.
+
+    The 6502 USB Device Driver is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The 6502 USB Device Driver is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    Lesser GNU General Public License for more details.
+
+    You should have received a copy of the Lesser GNU General Public License
+    along with the 6502 USB Device Driver. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+#ifndef USBDEV_I65
+#define	USBDEV_I65
+
+#define	USBD_CHAN_BUF		0	/* 2 byte buffer address */
+#define	USBD_CHAN_LEN		2	/* 2 byte buffer length USBD_CHAN_BUF+2 */
+#define	USBD_CHAN_DONE_CB	4	/* 2 byte callback when transfer is done (interrupt context) \
+					     USB_CHAN_LEN+2 */
+#define	USBD_CHAN_FLAGS		6	/* 1 byte flags */
+#define	USBD_CHAN_PARAM		7	/* 1 byte transient parameter for callback */
+
+#define	USBD_FLAGS_TOGGLE	$80	/* when set, use DATA1, when clear, use DATA0 for initial packet */
+#define	USBD_FLAGS_FIXLEN	$40	/* when set, do not sent short packet at end of tx */
+
+#endif
+

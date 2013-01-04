@@ -1,0 +1,48 @@
+/*
+    (C) 2011 Andre Fachat
+
+    This file is part of the 6502 USB Device Driver.
+
+    The 6502 USB Device Driver is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The 6502 USB Device Driver is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    Lesser GNU General Public License for more details.
+
+    You should have received a copy of the Lesser GNU General Public License
+    along with the 6502 USB Device Driver. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/*
+ * debug code
+ */
+
+#ifndef DEBUG_I65
+#define	DEBUG_I65
+
+#ifdef DEBUG
+
+#define	DDEBUG(a)	a
+#define DENTER(a)	.(:jsr __l:.data:__l jsr dbg_enter:.asc a, 0:rts:.text:.)
+#define	DEXIT()		jsr dbg_exit0
+#define DEXIT(a)	.(:jsr __l:.data:__l jsr dbg_exit:.asc a, 0:rts:.text:.)
+#define DMSG(a)		.(:jsr __l:.data:__l jsr dbg_msg:.asc a, 0:rts:.text:.)
+#define	DSTACK()	jsr dbg_stack
+
+#else	/* DEBUG */
+
+#define	DDEBUG(a)
+#define DENTER(a)
+#define	DEXIT()	
+#define	DEXIT(a)
+#define	DMSG(a)
+#define	DSTACK()
+
+#endif
+
+#endif
+

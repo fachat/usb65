@@ -1,0 +1,44 @@
+
+#include "spi65b.i65"
+
+
+spi_init .(
+	lda #$04	; ECE external clock enable
+	sta SPICR
+	lda #0
+	sta SPIDIV
+	lda #$0f
+	sta SPIIERB	; no interrupts, no device selected
+	clc
+	rts
+	.)
+
+#if 0
+#define	spi_enable(mask)	\
+	lda SPISSRB		:\
+	and #255-(mask)		:\
+	sta SPISSRB
+
+#define	spi_disable(mask)	\
+	lda SPISSRB		:\
+	ora #(mask)		:\
+	sta SPISSRB
+
+#define	spi_wra()		\
+	.(			:\
+	sta SPIDR		:\
+l	bit SPISR		:\
+	bpl l			:\
+	lda SPIDR		:\
+	.)
+
+#define	spi_checkints()		\
+	lda SPIISR		:\
+	and #$f0
+
+// using the same bit as the enable, so parameter is shifted
+#define	spi_checkint(mask)	\
+	lda SPIISR		:\
+	and #(mask)<<4
+#endif
+

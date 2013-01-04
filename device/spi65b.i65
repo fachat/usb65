@@ -1,0 +1,60 @@
+
+#ifndef SPI65B_I65
+#define SPI65B_I65
+
+ETHSEL          =       $01
+
+#ifdef PET
+SPIBASE		=  	$a8a0
+#else
+SPIBASE		=  	$e8a0
+#endif
+
+SPIDR           =      (SPIBASE)   	; SPI data port
+SPISR           =      (SPIBASE+1)   	; SPI status
+SPICR           =      (SPIBASE+1)   	; SPI control
+SPIDIV          =      (SPIBASE+2)   	; SPI SCLK divisor (NOTE - lower 4 bits only)
+SPIISRB         =      (SPIBASE+2)   	; SPI Interrupt status register (upper 4 bits)
+SPISSRB         =      (SPIBASE+3)   	; SPI Slave Select register (lower 4 bits)
+SPIIERB         =      (SPIBASE+3)   	; SPI Interrupt enable register (upper 4 bits)
+
+
+#define spi_enable(mask)        \
+        lda SPISSRB             :\
+        and #255-(mask)         :\
+        sta SPISSRB
+
+#define spi_disable(mask)       \
+        lda SPISSRB             :\
+        ora #(mask)             :\
+        sta SPISSRB
+
+#define spi_wra()           	\
+        .(                      :\
+        sta SPIDR               :\
+l_      bit SPISR               :\
+        bpl l_                  :\
+        lda SPIDR               :\
+        .)			
+
+// does not overwrite AC
+#define spi_wraNR()           	\
+        .(                      :\
+        sta SPIDR               :\
+l_      bit SPISR               :\
+        bpl l_                  :\
+        bit SPIDR               :\
+        .)			
+
+
+#define spi_checkints()         \
+        lda SPIISR              :\
+        and #$f0
+
+// using the same bit as the enable, so parameter is shifted
+#define spi_checkint(mask)      \
+        lda SPIISRB             :\
+        and #(mask)<<4
+
+#endif
+

@@ -1,0 +1,874 @@
+/*
+    (C) 2011 Andre Fachat
+
+    This file is part of the 6502 USB Host Driver.
+
+    The 6502 USB Host Driver is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The 6502 USB Host Driver is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    Lesser GNU General Public License for more details.
+
+    You should have received a copy of the Lesser GNU General Public License
+    along with the 6502 USB Host Driver. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/*
+ * requires SL811_HOST to be set to the I/O address for the
+ * host SL811 device
+ * 
+ * requires ZUDEVPTR1 to be set to a zeropage pointer to use
+ * requires ZUDEVPTR2 to be set to a zeropage pointer to use
+ * requires "pause" to be defined (routine to wait number of 50ms intervals in AC)
+ */
+
+ /*
+ * external interface:
+ * 
+ * sl811h_init
+ *	checks presence of hardware (SL811); 
+ *	return clc when ok, sec when not found 
+ *	when found, return version in AC, as BCD
+ *	fastcall
+ * sl811h_polldev
+ *	checks if a device is present.
+ *	return clc when device found, sec when not
+ *	fastcall
+ * sl811h_devinit
+ *	init the SL811 and the USB bus
+ *	return clc when device found, sec when not
+ *	when device is found, return speed in AC
+ *	0=low speed
+ *	1=full speed
+ *	when device is not found, return error condition in AC
+ *	0=no device 
+ *	routine is slow, calls pause
+ * sl811h_reset
+ *	reset the bus and configure for correct speed
+ *	input: AC=speed
+ *	0=low speed
+ *	send a SETUP packet, and receive results when
+ *	applicable
+ *	in: A/Y contain ptr to request buffer (HOST_CTRL_*)
+ *	return clc on success, sec on error
+ *	on success, AC has number of bytes transferred
+ * 	on error, AC has error condition
+ */
+
+#include "usb.i65"
+#include "sl811_host.i65"
+
+	.(
+
+	.zero
+
+ctrlptr	=ZUDEVPTR1
+
+	.bss
+
+len	.byt 0
+cnt	.byt 0
+rcnt	.byt 0
+endpt	.byt 0
+pream	.byt 0
+rootspd	.byt 0
+maxpklen .byt 0
+flags	.byt 0
+retries	.word 0
+
+	.text
+
+;-----------------------------------------------------------
+; initialization
+
+; check
+&sl811h_init .(
+	jsr getversion
+	bcs err
+	lda #0
+	STH_HOSTCTL
+	STH_MAINCTL
+	jsr clearirq
+err	rts
+	.)
+
+&sl811h_polldev .(
+	LDH_INTSTAT
+	and #INT_PRESENT
+	beq found
+	lda #INT_PRESENT
+	STH_INTSTAT
+	sec
+	rts
+found	clc
+	rts
+	.)
+
+	; init the sl811
+&sl811h_devinit .(
+	jsr usbreset
+
+	jsr clearirq
+
+	lda #10
+	jsr pause
+
+	jsr queryusbdevice
+	beq device
+
+	jsr clearirq
+nodev	lda #0		; no device found error condition
+	sec		; error
+	rts
+device
+	lda #1
+	jsr pause
+	jsr queryusbdevice
+	bne nodev
+
+	; continue
+
+	jsr usbreset	; reset attached device
+
+	LDH_INTSTAT
+	and #INT_DPLUS
+	bne fullspeed
+	; low speed
+	lda #0
+	.byt $2c
+fullspeed
+	lda #1
+	sta rootspd	; save speed of root hub/device
+	clc
+	rts
+	.)
+
+&sl811h_reset .(
+
+	tax
+	bne init_full
+
+; init chip for low speed device
+init_low 
+        ; init chip
+	; swap for low speed
+        lda #CTLREG2_INIT | CTLREG2_DSWAP
+        STH_CTRL2
+
+	lda #$e0
+	STH_SOF_LOW
+
+	; see datasheet page 11, SOF_ENA must come after setting SOF counter
+	lda #MCNTRL_SOF_ENA | MCNTRL_LSPD
+	STH_MAINCTL
+
+	jmp setupusb
+
+; init chip for full speed device
+init_full 
+        ; init chip
+	; swap only for low speed
+        lda #CTLREG2_INIT
+        STH_CTRL2
+
+	lda #$e0
+	STH_SOF_LOW
+
+	; see datasheet page 11, SOF_ENA must come after setting SOF counter
+	lda #MCNTRL_SOF_ENA
+	STH_MAINCTL
+
+setupusb 
+	lda #0
+	STH_BUFLEN
+
+        lda #PID_SOF		; SOF PID, endpoint 0	
+	STH_PIDEP
+
+        lda #0			; USB address
+	STH_FNADDR
+
+        lda #HOSTCTL_ARM	; ARM the SOF generation
+	jsr hostcmd
+
+        lda #25
+        JSR pause
+
+; clear the interrupt status(?)
+&clearirq 
+	lda #$FF
+	STH_INTSTAT
+	rts
+	.)
+
+; set params from the HOST_CTRL_* struct
+set_params .(
+#ifdef DEBUG_HW
+	lda #"/"
+	jsr printc
+#endif
+	ldy #HOST_CTRL_FNADDR
+	lda (ctrlptr),y
+	STH_FNADDR
+#ifdef DEBUG_HW
+	jsr hexout
+#endif
+	iny			; HOST_CTRL_ENDPOINT
+	lda (ctrlptr),y
+	sta endpt
+#ifdef DEBUG_HW
+	jsr hexout
+#endif
+
+	iny			; HOST_CTRL_SPEED
+	lda (ctrlptr),y
+	jsr set_pream
+#ifdef DEBUG_HW
+	jsr hexout
+#endif
+
+	iny			; HOST_CTRL_FLAGS
+	lda (ctrlptr),y
+	sta flags
+
+	iny			; HOST_CTRL_MAXPKLEN low
+	lda (ctrlptr),y
+	sta maxpklen
+#ifdef DEBUG_HW
+	pha
+	jsr hexout
+	pla
+#endif
+	cmp #$41		; we currently support only full speed, i.e. up to 64 byte
+	bcs lenerr		; equals or larger than $41, than error
+	iny			; HOST_CTRL_MAXPKLEN hi
+	lda (ctrlptr),y
+	bne lenerr
+
+	iny			; HOST_CTRL_BUFLEN low
+	lda (ctrlptr),y		; buflen
+	cmp #$f1
+	bcs lenerr		; we currently support only up to $f0 byte transfers (max sl811h buffer)
+	sta len	
+#ifdef DEBUG_HW
+	jsr hexout
+#endif		
+	iny
+	lda (ctrlptr),y
+	bne lenerr		; we currently support only up to 64 byte transfers
+
+	clc
+	rts
+
+lenerr	lda #ERR_PKLEN
+	DEXIT("SET_PARAMS X")
+	sec
+	rts
+	.)
+
+&sl811h_get .(
+	sta ctrlptr
+	sty ctrlptr+1
+
+	jsr set_params
+	bcs end
+
+	; jump into the data_control method
+	jsr get_in
+	bcc tobuf	; jump into sl811h_control
+end	rts
+	.)
+
+&sl811h_control .(
+	sta ctrlptr
+	sty ctrlptr+1
+	; copy ctrl msg to sl811h buffer
+#ifdef DEBUG_HW
+	lda #"!"
+	jsr printc
+#endif
+	ldx #$10
+	ldy #HOST_CTRL_SETUP
+c1	
+	stx SL811H_REG		; ERRATA says not to use the autoincrement feature... :-(
+	lda (ctrlptr),y
+	sta SL811H_DATA		; setup packet into sl811 buffer
+#ifdef DEBUG_HW
+	jsr hexout
+#endif
+	inx
+	iny
+	cpy #HOST_CTRL_SETUP+8
+	bne c1
+
+	; set sl811h parameters from HOST_CTRL_*
+	jsr set_params
+	bcs err
+
+	; host to device or device to host
+	ldy #HOST_CTRL_SETUP
+	lda (ctrlptr),y
+	bpl send_out
+
+	; device to host (e.g. get descriptors etc)
+recv_in
+	lda #0		; receive
+	jsr data_control
+	bcs err
+&tobuf
+	; copy received bytes from sl811h to buffer
+	tax			; save number of transferred bytes
+#ifdef DEBUG_HW
+	lda #"#"
+	jsr printc
+	txa
+	jsr hexout
+#endif
+	; set ctrlptr to data buffer address
+	jsr ptr_to_buffer
+
+	; copy data from sl811h to buffer
+	txa
+	pha
+	jsr tobuffer
+	pla			; bytes transferred
+	clc
+err	
+	rts
+
+send_out
+	ldy #HOST_CTRL_BUFLEN
+	lda (ctrlptr),y
+	tax			; number of bytes to tx
+
+	; set ctrlptr to data buffer address
+	jsr ptr_to_buffer
+
+	; copy data from buffer to sl811h
+	jsr frombuffer
+
+	lda #$80		; send
+	jsr data_control
+	rts
+	.)
+
+ptr_to_buffer .(
+	ldy #HOST_CTRL_BUFADDR	; put buffer address into ctrlptr
+	lda (ctrlptr),y
+	pha
+	iny
+	lda (ctrlptr),y
+	sta ctrlptr+1
+	pla
+	sta ctrlptr
+	rts
+	.)
+
+
+; xr has number of bytes to transfer to sl811 host buffer
+frombuffer .(
+	; copy desc to buffer
+	txa
+	beq end
+	sta cnt
+	ldx #$18
+	ldy #0
+desc1
+	; ERRATA says not to use the autoincrement feature	
+	stx SL811H_REG
+	lda (ctrlptr),y
+	sta SL811H_DATA
+	inx
+	iny
+	dec cnt
+	bne desc1
+end	
+	rts
+	.)
+
+; xr has number of bytes to transfer from sl811 host buffer
+tobuffer .(
+	; copy desc to buffer
+	txa
+	beq end
+	sta cnt
+	ldx #$10
+	ldy #0
+desc1
+	; ERRATA says not to use the autoincrement feature	
+	stx SL811H_REG
+	lda SL811H_DATA
+	sta (ctrlptr),y
+	inx
+	iny
+	dec cnt
+	bne desc1
+end	rts
+	.)
+
+; get chip version
+getversion .(	
+	LDH_HWREL
+	and #$f0
+	cmp #$10
+	bne no12
+	lda #$12
+	jmp ini1
+no12	cmp #$20
+	bne no15
+	lda #$15
+	jmp ini1
+no15	sec
+	rts
+ini1	clc
+	rts
+	.)
+
+; set the preamble variable
+; in: AC = device speed, rootspd = hub speed
+; out: set pream to $80 when device is low, but hub is high
+; must preserve y
+; SYNCSOF ensures this first USB Tx starts such that the other packets
+; do not interfere with the following SOF
+; should only be set on full speed
+set_pream .(
+	cmp rootspd
+	beq same_speed	; both either low or full, then no preamble
+	cmp #0		; is device low
+	bne no_pream	; no, device is high (and hub low, then no preamble)
+	lda #HOSTCTL_PREAMBLE | HOSTCTL_SYNCSOF	; device is low, thus hub is full, therefore preamble
+	.byt $2c
+no_pream
+	lda #0
+setp	sta pream
+	rts
+same_speed
+	cmp #0
+	beq setp	; both, host and device are low speed, thus set no preamble and no sync_sof
+	lda #HOSTCTL_SYNCSOF
+	bne setp	; both are full speed, so set sync_sof; jmp always
+	.)
+
+; check USB device detection
+; AC=0 device detected
+; AC!=0 device not present
+queryusbdevice .(
+	LDH_INTSTAT
+	and #INT_PRESENT
+	rts
+	.)
+
+; reset the chip and USB	
+usbreset .(
+	; init chip
+	lda #CTLREG2_INIT
+	STH_CTRL2
+
+	; reset bus
+	lda #MCNTRL_SE0
+	STH_MAINCTL
+
+	; wait at least 50ms
+	lda #5
+	jsr pause
+	
+	; "un-"reset bus
+	lda #MCNTRL_NORMAL
+	STH_MAINCTL
+
+	; wait another 100ms at least before USB tx can start
+	lda #5
+	jsr pause
+	rts
+	.)
+
+; execute a host command
+; and wait for done via interrupt status
+hostcmd .(
+        pha			; save x and y
+
+	lda #128
+	sta retries
+	sta retries+1
+
+	lda #0
+	STH_HOSTCTL		; init 
+
+        lda #INT_EP0DONE	; endpoint 0 int
+	STH_INTSTAT
+
+        pla		
+	STH_HOSTCTL		; send command to process	
+
+cmd1    LDH_INTSTAT		; check interrupt 
+        and #INT_EP0DONE
+        bne cmdok		; no interrupt yet
+
+	dec retries
+	bne cmd1
+	dec retries+1
+	bne cmd1
+	sec
+	.byt $24
+cmdok
+	clc
+	LDH_PKSTAT		; load packet status
+        rts
+	.)
+
+; input:
+; buffer at $10 is filled with 8 byte control req
+; if output then buffer at $18 has data to send
+; endpt, len, FNADDR register must be set in advance
+; pream variable has $80 if low speed device on high speed root hub
+data_control .(
+
+	sta cnt		; 0=receive, $80=send
+
+	.(
+	ldy #10		; retry count
+
+sb2	lda #$10
+	STH_BUFADDR
+
+	lda #8
+	STH_BUFLEN	/* length of data buffer */
+
+	lda #PID_SETUP	; SETUP PID, endpoint 0
+	ora endpt
+	STH_PIDEP
+
+	lda #HOSTCTL_ARM | HOSTCTL_OUT | HOSTCTL_ENABLE
+	ora pream
+	jsr hostcmd
+	bcs cmdl
+	tax
+	and #PKSTAT_ERROR | PKSTAT_TIMEOUT	; if no packet timeout (4) or error (2)
+	beq sendrecv	; then go to data stage
+cmdl
+	txa
+	pha		; save error code
+	lda #1
+	jsr pause
+	pla
+	dey
+	bne sb2
+#ifdef DEBUG_HW
+	pha
+	lda #"T"
+	jsr printc
+	pla
+	pha
+	jsr hexout
+	pla
+#endif
+	jmp error
+	.)
+
+sendrecv
+	lda cnt
+	bmi send_out
+	jmp get_in
+send_out
+	;----------------------------
+	; data stage out, send data
+
+	.(
+
+	lda len
+	beq doneout	; test
+
+	sta cnt		; bytes still to send
+
+	ldy #10		; retry count
+
+sb2	
+#ifdef DEBUG_HW
+	lda #"="
+	jsr printc
+	lda cnt
+	jsr hexout
+#endif
+	lda #$18	; the data is copied behind the setup packet
+	clc
+	adc len		; plus length gives end of buffer
+	sec
+	sbc cnt		; minus bytes to send gives start of packet
+	STH_BUFADDR
+#ifdef DEBUG_HW
+	jsr hexout
+#endif
+
+	lda maxpklen
+	cmp cnt
+	bcc fullpk
+	lda cnt		; number of bytes to tx less (or equal) than full packet
+fullpk	
+	STH_BUFLEN	/* length of data buffer */
+#ifdef DEBUG_HW
+	jsr hexout
+#endif
+
+	lda #PID_OUT	; OUT PID, endpoint 0
+	ora endpt
+	STH_PIDEP
+
+	lda #HOSTCTL_ARM | HOSTCTL_OUT | HOSTCTL_ENABLE 
+	ora pream
+	jsr hostcmd
+	bcs cmdl
+	tax
+#ifdef DEBUG_HW
+	jsr hexout
+	txa
+#endif
+	and #PKSTAT_ERROR | PKSTAT_TIMEOUT	; if no packet timeout (4) or error (2)
+	beq txnext	; then check next packet
+cmdl
+	txa
+	pha		; save error code
+	lda #1
+	jsr pause
+	pla
+	dey
+	bne sb2
+#ifdef DEBUG_HW
+	pha
+	lda #"Y"
+	jsr printc
+	pla
+	pha
+	jsr hexout
+	pla
+	cmp #$82
+x	beq x		; JAM
+	
+#endif
+	jmp error
+txnext	
+	lda cnt
+	beq doneout
+	sec
+	sbc maxpklen
+	sta cnt
+	bcs sb2		; next packet (even if cnt is zero - zero len packet marks end)
+doneout
+	.)
+	;----------------------------
+	; end of data out stage,
+	; next rx ack from device
+	.(
+	; 
+againin 
+	lda #10
+	sta cnt		; retry count
+retryloop
+#ifdef DEBUG_HW
+	lda #"K"
+	jsr printc
+#endif
+	lda #0
+	STH_BUFLEN
+	
+	lda #PID_IN
+	ora endpt
+	STH_PIDEP
+
+	lda #HOSTCTL_ARM | HOSTCTL_IN | HOSTCTL_ENABLE 
+	ora pream
+	jsr hostcmd
+	bcs errorx
+
+	tax
+#ifdef DEBUG_HW
+	jsr hexout
+	txa
+#endif
+	and #PKSTAT_NAK | PKSTAT_ERROR 
+	bne retry	; NAK
+
+	txa
+	and #PKSTAT_STALL | PKSTAT_OVERFL
+	bne errorx	; stall or overflow
+	; ACK
+
+	clc
+	rts
+
+retry	dec cnt
+	bne retryloop
+
+errorx	jmp error
+	.)
+
+	;----------------------------
+	; data stage in, receive data
+&get_in	.(
+	lda len
+	sta cnt		; bytes still to receive
+	lda #10		; retry count
+	sta rcnt
+againin
+#ifdef DEBUG_HW
+	lda #"<"
+	jsr printc
+	lda len
+	jsr hexout
+#endif
+	; TODO check preamble clearing
+	; lda pream
+	; and #$ff-HOSTCTL_TOGGLE
+	; sta pream
+	
+	lda len		; total bytes
+	sec
+	sbc cnt		; minus bytes to received
+	clc		; gives bytes already received
+	adc #$10	; add sl811 buffer offset
+	STH_BUFADDR	; receive buffer address
+
+	lda cnt		; set rx length to number of bytes to receive
+	STH_BUFLEN
+#ifdef DEBUG_HW
+	jsr hexout
+#endif
+
+	lda #PID_IN	; IN PID
+	ora endpt
+	STH_PIDEP
+	lda #HOSTCTL_ARM | HOSTCTL_IN | HOSTCTL_ENABLE 
+	ora pream
+	jsr hostcmd
+
+	tax
+
+#ifdef DEBUG_HW
+	jsr hexout
+	txa
+#endif
+	; timeout helps for receiving timeouts
+	and #PKSTAT_TIMEOUT | PKSTAT_ERROR
+	bne doretry
+	
+	bit flags	; check HOST_FLAG_IGNORE_NAK in bit 7
+	bmi no_nak
+	txa
+	and #PKSTAT_NAK
+	bne doretry
+no_nak
+	txa
+	and #PKSTAT_STALL | PKSTAT_OVERFL	; STALL or Overflow
+	bne error
+
+	; move DATA0/DATA1 bit into preamble so 
+	; ack packet to device has correct toggle bit
+	txa
+	asl
+	asl
+	asl
+	and #HOSTCTL_TOGGLE
+	ora pream
+	sta pream
+
+	; ok
+
+	lda len
+	beq nodata
+
+	LDH_XFERCNT	; number of bytes still to transfer
+	tax		; so we can compute number of bytes transferred
+#ifdef DEBUG_HW
+	jsr hexout
+	txa
+#endif
+	beq donein
+	cmp cnt		; num of bytes still to transfer same as num of bytes requested?
+	beq donein	; zero length package received, done; then cnt is num of bytes already
+
+	clc		; prepare for two's complement, therefore clc instead of sec
+	sbc cnt		; substract last number of bytes to receive; gives negative number of bytes rx'd
+	eor #$ff	; two's complement = negative, the one offset is done by clc instead of sec before sbc
+	
+	cmp maxpklen	; maximum packet length
+	bne donein	; last packet not max length then end
+
+	stx cnt
+	jmp againin
+
+doretry
+	dec rcnt
+	beq error
+	jmp againin	; rx next packet 
+donein	
+	stx cnt		; bytes still to transfer to reach len
+	lda len		
+	sec
+	sbc cnt		; len-cnt is number of bytes transferred
+	sta cnt		; save
+
+	.)
+
+	;----------------------------
+	; end of data in stage,
+	; send control data ack
+	.(
+againout 
+#ifdef DEBUG_HW
+	lda #">"
+	jsr printc
+#endif
+	lda #0
+	STH_BUFLEN
+	
+	lda #PID_OUT
+	ora endpt
+	STH_PIDEP
+
+	lda #HOSTCTL_ARM | HOSTCTL_OUT | HOSTCTL_ENABLE ; | HOSTCTL_SYNCSOF
+	ora pream
+	jsr hostcmd
+	bcs error
+
+	tax
+#ifdef DEBUG_HW
+	pha
+	jsr hexout
+	pla
+	cmp #$82
+x	beq x		; JAM
+#endif
+	and #PKSTAT_NAK | PKSTAT_ERROR 
+	bne againout	; NAK
+
+	txa
+	bmi error	; stall - no need for overflow, as we send, not receive
+	; ACK
+&nodata  
+	lda cnt		; number of bytes transferred
+	clc
+	rts
+	.)
+
+error	ldy #ERR_DEVICE
+	sec
+	rts
+	.)
+
+storeregh .(
+	stx SL811H_REG
+	sta SL811H_DATA
+	rts
+	.)
+
+loadregh .(
+	stx SL811H_REG
+	lda SL811H_DATA
+	rts
+	.)
+
+	.)
+

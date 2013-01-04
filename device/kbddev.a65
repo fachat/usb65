@@ -1,0 +1,318 @@
+/*
+    (C) 2011 Andre Fachat
+
+    This file is part of the 6502 USB Device Driver.
+
+    The 6502 USB Device Driver is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The 6502 USB Device Driver is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    Lesser GNU General Public License for more details.
+
+    You should have received a copy of the Lesser GNU General Public License
+    along with the 6502 USB Device Driver. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/*
+ * keyboard device functionality driver
+ *
+ * sends keyboard events to the host, that are given to the driver with 
+ * kbddev_send. Calls kbddev_meta with ac=LED bits
+ * when LEDs are set from host
+ */
+
+	.(
+	.zero
+
+kbdptr	.word 0
+kbdptr2	.word 0
+
+	.bss
+
+kbdbuf	.dsb 8, 0 
+
+	.data
+
+rep_ccb	.word repdesc, repdesclen, usbd_setup_recv_ack	; send the keyboard code, std ep0 ack callback
+	.byt USBD_FLAGS_TOGGLE, 0	; send DATA1 first in setup response! no callback transient data
+
+kbd_ccb	.word kbdbuf, 8, 0 	; send the keyboard code, receive ack
+	.byt USBD_FLAGS_FIXLEN, 0		; send DATAx, no callback transient data
+	
+kbdif	.byt 0			; interface number, given at registration
+kbdep	.byt 0			; endpoint number, given at registration
+
+trcnt	.byt 0			; translate temp counter
+trmod	.byt 0, 2, 1		; translate table for modifiers
+
+	.text
+
+; registers a keyboard interface
+; ptr must hold pointer to interface descriptor; ac has cslot
+; (endptr for usbgen_next_desc must hold end of descriptor set)
+&kbddev_register .(
+	sta kbdif
+	sty kbdep
+
+	ldy #MSG_KEYBOARD
+	jsr print
+
+	lda #<kbddev_setup_cb
+	ldy #>kbddev_setup_cb
+	jsr usbd_register_device
+	
+	rts
+	.)
+
+; ac holds a PETSCII value for a character to send
+; This routine translates it into a keycode and modifiers
+; Each key press generates two packets, one key press, and
+; one key release (i.e. empty) packet.
+; This could be done more sophisticated, with tracking multiple
+; pressed keys, but this is enough for now
+&kbddev_send .(
+	jsr translate2usb
+	bcs end
+
+	sta kbdbuf+2	; key code
+	stx kbdbuf	; modifier
+
+	; wait till packet has been sent
+active	ldx kbdep
+	jsr usbd_is_active
+	bcs active
+
+	lda #<kbd_ccb
+	ldy #>kbd_ccb
+	ldx kbdep
+	DMSG("SET KBD TX")
+	jsr usbd_set_channel_tx
+
+	lda kbd_ccb + USBD_CHAN_FLAGS
+	eor #USBD_FLAGS_TOGGLE
+	sta kbd_ccb + USBD_CHAN_FLAGS
+
+	; wait till packet has been sent
+	; (could have here been done with callback as well though)
+actloop	ldx kbdep
+	jsr usbd_is_active
+	bcs actloop
+
+	lda #0	; empty
+	sta kbdbuf
+	sta kbdbuf+2
+
+	lda #<kbd_ccb
+	ldy #>kbd_ccb
+	ldx kbdep
+	DMSG("SET KBD TX2")
+	jsr usbd_set_channel_tx
+
+	lda kbd_ccb + USBD_CHAN_FLAGS
+	eor #USBD_FLAGS_TOGGLE
+	sta kbd_ccb + USBD_CHAN_FLAGS
+end	rts
+	.)
+
+; ignore for now
+kbddev_setup_cb .(
+	sta kbdptr
+	sty kbdptr+1
+	ldy #0
+	lda (kbdptr),y
+	cmp #$81	; device to host
+	bne no_get_report
+	iny
+	lda (kbdptr),y
+	cmp #6		; get report descriptor
+	bne dont
+	iny
+	lda (kbdptr),y
+	bne dont	; index #0
+	iny
+	lda (kbdptr),y
+	cmp #$22	; report descriptor
+	bne dont
+
+	lda #<rep_ccb
+	ldy #>rep_ccb
+	ldx #0		; control endpoint
+	jsr usbd_set_channel_tx	
+	clc
+	rts
+no_get_report
+	cmp #$21
+	bne no_set_idle
+	iny
+	lda (kbdptr),y
+	cmp #$0a
+	bne no_set_idle
+	; set idle (ignore all other values)
+	jsr usbd_setup_send_ack
+	clc
+	rts
+no_set_idle
+dont
+	sec
+	rts
+	.)
+
+;----------------------------------------------------------------------------
+; Note: for simplicity I reuse the table from the host driver, this could be
+; done more efficiently
+;
+
+translate2usb .(
+	tax
+	lda #<kbd_table
+	sta kbdptr2
+	lda #>kbd_table
+	sta kbdptr2+1
+
+next	ldy #0
+	lda (kbdptr2),y
+	beq done
+	iny
+	txa
+	cmp (kbdptr2),y
+	beq found
+	iny
+	cmp (kbdptr2),y
+	beq found
+	iny
+	cmp (kbdptr2),y
+	beq found
+	iny
+	tya
+	clc
+	adc kbdptr2
+	sta kbdptr2
+	bcc next
+	inc kbdptr2+1
+	bne next
+
+done	sec
+	rts
+found	dey
+	lda trmod,y
+	tax
+	ldy #0
+	lda (kbdptr2),y
+	clc
+	rts
+	.)
+
+	.data
+
+; table with key translations. Each row has a key, the columns are the
+; different modifiers. First column is original keyboard value, second 
+; is without modifier, third with shift, fourth col is with ctrl
+;
+kbd_table
+	.byt $04, 65, 65+128, 1		; a
+	.byt $05, 66, 66+128, 2		; b
+	.byt $06, 67, 67+128, 3		; c
+	.byt $07, 68, 68+128, 4		; d
+	.byt $08, 69, 69+128, 5		; e
+	.byt $09, 70, 70+128, 6		; f
+	.byt $0a, 71, 71+128, 7		; g
+	.byt $0b, 72, 72+128, 8		; h
+	.byt $0c, 73, 73+128, 9		; i
+	.byt $0d, 74, 74+128, 10	; j
+	.byt $0e, 75, 75+128, 11	; k
+	.byt $0f, 76, 76+128, 12	; l
+	.byt $10, 77, 77+128, 13	; m
+	.byt $11, 78, 78+128, 14	; n
+	.byt $12, 79, 79+128, 15	; o
+	.byt $13, 80, 80+128, 16	; p
+	.byt $14, 81, 81+128, 17	; q
+	.byt $15, 82, 82+128, 18	; r
+	.byt $16, 83, 83+128, 19	; s
+	.byt $17, 84, 84+128, 20	; t
+	.byt $18, 85, 85+128, 21	; u
+	.byt $19, 86, 86+128, 22	; v
+	.byt $1a, 87, 87+128, 23	; w
+	.byt $1b, 88, 88+128, 24	; x
+	.byt $1c, 89, 89+128, 25	; y (US) z (DE)
+	.byt $1d, 90, 90+128, 26	; z (US) y (US)
+	.byt $1e, "1", "!", 0		; 2
+	.byt $1f, "2", "@", 0		; 3
+	.byt $20, "3", "#", 0		; 4
+	.byt $21, "4", "$", 0		; 5
+	.byt $22, "5", "%", 0		; 6
+	.byt $23, "6", "^^", 0		; 7 (note: ^ is an escape char in xa65)
+	.byt $24, "7", "&", 0		; 8
+	.byt $25, "8", "*", 0		; 9
+	.byt $26, "9", "(", 0		; 0
+	.byt $27, "0", ")", 0		; 1 (top row)
+	.byt $28, 13, 13, 13		; CR
+	.byt $29, $1b, $1b, $1b		; ESC
+	.byt $2a, $14, $94, 0	;8, 8, 8		; backspace
+	.byt $2b, 9, 9, 9		; TAB
+	.byt $2c, $20, $20, $20		; SPACE
+	.byt $2d, "-", "_", 0		; - (US) ß (DE)
+	.byt $2e, "=", "+", 0		; = (US) ' (DE)
+	.byt $2f, "[", $7b, 0		; [ (US) ü (DE)
+	.byt $30, "]", $7d, 0		; ] (US) + (DE)
+
+	.byt $32, "\", $7c, 0		; \ (US) # (DE)
+	.byt $33, ";", ":", 0		; ; (US) ö (DE)
+	.byt $34, "'", 34, 0		; ' (US) ä (DE)
+	.byt $35, "`", "^^", 0		; ` (US) ^ (DE) (Note: ^ is escape character in xa65)
+	.byt $36, ",", "<", 0		; ,
+	.byt $37, ".", ">", 0		; .
+	.byt $38, "/", "?", 0		; / (US) - (DE)
+;	.byt $39	; CAPS LOCK
+;	.byt $3a	; F1
+;	.byt $3b	; F2
+;	.byt $3c	; F3
+;	.byt $3d	; F4
+;	.byt $3e	; F5
+;	.byt $3f	; F6
+;	.byt $40	; F7
+;	.byt $41	; F8
+;	.byt $42	; F9
+;	.byt $43	; F10
+;	.byt $44	; F11
+;	.byt $45	; F12
+;	.byt $46	; PRT
+;	.byt $47	; SCRLCK
+;	.byt $48	; PAUSE
+	.byt $49, $94, $94, 0		; INS
+	.byt $4a, $13, $93, 0		; POS1
+;	.byt $4b	; PGUP
+	.byt $4c, $14, $94, 0		; DEL
+;	.byt $4d	; END
+;	.byt $4e	; PGDN
+	.byt $4f, $1d, $9d, 0		; CRSR RIGHT
+	.byt $50, $9d, $9d, 0		; CRSR LEFT
+	.byt $51, $11, $91, 0		; CRSR DOWN
+	.byt $52, $91, $91, 0		; CRSR UP
+;	.byt $53	; NUM LOCK
+	.byt $54, "/", 0, 0		; / (KEYPAD)
+	.byt $55, "*", 0, 0		; * (KEYPAD)
+	.byt $56, "-", 0, 0		; - (KEYPAD)
+	.byt $57, "+", 0, 0		; + (KEYPAD)
+	.byt $58, 13, 0, 0		; ENTER (KEYPAD)
+	.byt $59, "1", 0, 0		; 1 (KEYPAD)
+	.byt $5a, "2", 0, 0		; 2 (KEYPAD)
+	.byt $5b, "3", 0, 0		; 3 (KEYPAD)
+	.byt $5c, "4", 0, 0		; 4 (KEYPAD)
+	.byt $5d, "5", 0, 0		; 5 (KEYPAD)
+	.byt $5e, "6", 0, 0 		; 6 (KEYPAD)
+	.byt $5f, "7", 0, 0		; 7 (KEYPAD)
+	.byt $60, "8", 0, 0		; 8 (KEYPAD)
+	.byt $61, "9", 0, 0		; 9 (KEYPAD)
+	.byt $62, "0", 0, 0		; 0 (KEYPAD)
+	.byt $63, ".", 0, 0		; . (US) , (DE) (KEYPAD)
+;	.byt $64	; ??? (US) < (DE)
+	.byt 0				; end of table
+
+	.text
+ 
+	.)
+

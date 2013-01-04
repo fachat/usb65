@@ -1,0 +1,854 @@
+/*
+    (C) 2011,2013 Andre Fachat
+
+    This file is part of the 6502 USB Host Driver.
+
+    The 6502 USB Host Driver is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The 6502 USB Host Driver is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    Lesser GNU General Public License for more details.
+
+    You should have received a copy of the Lesser GNU General Public License
+    along with the 6502 USB Host Driver. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+ /*
+ * external interface:
+ * 
+ * sl811h_init
+ *	checks presence of hardware (SL811); 
+ *	return clc when ok, sec when not found 
+ *	when found, return version in AC, as BCD
+ *	fastcall
+ * sl811h_polldev
+ *	checks if a device is present.
+ *	return clc when device found, sec when not
+ *	fastcall
+ * sl811h_devinit
+ *	init the SL811 and the USB bus
+ *	return clc when device found, sec when not
+ *	when device is found, return speed in AC
+ *	0=low speed
+ *	1=full speed
+ *	when device is not found, return error condition in AC
+ *	0=no device 
+ *	routine is slow, calls pause
+ * sl811h_reset
+ *	reset the bus and configure for correct speed
+ *	input: AC=speed
+ *	0=low speed
+ *	send a SETUP packet, and receive results when
+ *	applicable
+ *	in: A/Y contain ptr to request buffer (HOST_CTRL_*)
+ *	return clc on success, sec on error
+ *	on success, AC has number of bytes transferred
+ * 	on error, AC has error condition
+ *
+ * sl811h_control
+ *	Do a control transfer. a/y are the address of a 
+ * 	control struct
+ *
+ * sl811h_get
+ *	do an IN transfer. a/y are the address of the 
+ *	control struct
+ */
+
+MAX3421E_EnMask = 0x04
+
+#include "spi65b.i65"
+#include "usb.i65"
+#include "max3421e.i65"
+
+#include "spi65b.a65"
+	.(
+
+	.zero
+ctrlptr	.word 0
+dataptr	.word 0
+	.data
+
+rootspd	.byt 0		; speed (low/full) of attached device (e.g. root hub)
+polled	.byt 0		; when set, device is present
+
+len	.byt 0		; length of a (requested IN) packet
+endpt	.byt 0
+flags	.byt 0
+maxpklen .byt 0		; maximum allowed size for packet
+cnt	.byt 0
+rcnt	.byt 0
+bcnt	.byt 0		; byt count up to len for packet transfer
+/*
+pream	.byt 0
+retries	.word 0
+*/
+	.text
+
+;-----------------------------------------------------------
+; initialization
+
+; check
+&max3421_init .(
+	DMSG("MAX3421 INIT")
+        ; can't really detect HW for now
+
+        jsr spi_init
+
+        ; SPI = full duplex, INTLEVEL = negative level
+        ; should set GPX if used, is not used here
+        wreg(rPINCTL, bmFDUPSPI+bmINTLEVEL)
+
+	; reset (leaves FDUPSPI and INTLEVEL as they are)
+	wreg(rUSBCTL, bmCHIPRES)
+	; deassert reset
+	wreg(rUSBCTL, 0)
+
+	; wait for oscillator (chip reset stops it, need to wait for coming up)
+l0	rreg(rUSBIRQ)
+	and #bmOSCOKIRQ
+	beq l0
+
+	; set into HOST mode
+	; weak pull down on D+ and D- for SAMPLEBUS to work
+	wreg(rMODE, bmHOST + bmDPPULLDN + bmDMPULLDN)
+
+	; Note: we don't use interrupts, so we don't need to enable
+	; them here - we just poll them in polldev
+	DMSG("MAX3421 INIT DONE")
+
+	lda #<-1
+	sta polled	; trigger initial device detection check
+err	rts
+	.)
+
+&max3421_polldev .(
+#ifdef DEBUG_HW
+	inc $8027
+#endif
+	lda polled
+	bmi check
+
+	rreg(rHIRQ)
+	and #bmCONDETIRQ
+	beq nochange
+DMSG("CONDETIRQ")
+check
+	lda #bmCONDETIRQ
+	wrac(rHIRQ)		; clear interrupt bit, just in case
+
+	; only called when changed, so ok to change LOWSPEED bit
+	; with this call
+	jsr queryusbdevice
+	bcc notfnd
+nochange
+	lda polled		; set in queryusbdevice
+	bne found
+notfnd	sec
+	rts
+found	clc
+	rts
+	.)
+
+	; init the chip
+&max3421_devinit .(
+	DMSG("MAX3421 DEVINIT")
+	jsr usbreset
+
+	;jsr clearirq
+
+	lda #10
+	jsr pause
+
+	jsr queryusbdevice
+	bcs device
+
+	;jsr clearirq
+nodev	lda #0		; no device found error condition
+	sec		; error
+	DMSG("NODEV")
+	rts
+device
+	
+	lda #1
+	jsr pause
+	jsr queryusbdevice
+	bcc nodev
+
+	clc
+	DMSG("DEV")
+	rts
+	.)
+
+&max3421_reset .(
+	DMSG("MAX3421 RESET")
+
+	sta rootspd	; store root speed
+
+	tax
+	bne init_full
+
+; init chip for low speed device
+init_low 
+	rreg(rMODE)
+	ora #bmLOWSPEED
+
+	jmp setspeed
+
+; init chip for full speed device
+init_full 
+	rreg(rMODE)
+	and #255-bmLOWSPEED
+setspeed
+	wrac(rMODE)
+
+	; set 0 as peripheral address for a start
+	wreg(rPERADDR, 0)
+
+	;jsr usbreset	; reset attached device
+	jsr startsof
+
+	; clear connect IRQ, as may be set by changing LOWSPEED
+	wreg(rHIRQ, bmCONDETIRQ)
+
+	;lda #<-1
+	;sta polled
+	rts
+	.)
+
+; set params from the HOST_CTRL_* struct
+set_params .(
+#if 0 //def DEBUG_HW
+	lda #"/"
+	jsr printc
+#endif
+	ldy #HOST_CTRL_FNADDR
+	lda (ctrlptr),y
+#if 0 //def DEBUG_HW
+	pha
+	jsr hexout
+	pla
+#endif
+	wrac(rPERADDR)
+	iny			; HOST_CTRL_ENDPOINT
+	lda (ctrlptr),y
+	sta endpt
+#if 0 //def DEBUG_HW
+	jsr hexout
+#endif
+
+	iny			; HOST_CTRL_SPEED
+	lda (ctrlptr),y
+	jsr set_pream
+
+	iny			; HOST_CTRL_FLAGS
+	lda (ctrlptr),y
+	sta flags
+
+	iny			; HOST_CTRL_MAXPKLEN low
+	lda (ctrlptr),y
+	sta maxpklen
+#if 0 //def DEBUG_HW
+	pha
+	jsr hexout
+	pla
+#endif
+	cmp #$41		; we currently support only full speed, i.e. up to 64 byte
+	bcs lenerr		; equals or larger than $41, than error
+	iny			; HOST_CTRL_MAXPKLEN hi
+	lda (ctrlptr),y
+	bne lenerr
+
+	iny			; HOST_CTRL_BUFLEN low
+	lda (ctrlptr),y		; buflen
+	;cmp #$41
+	;bcs lenerr		; we currently support only up to $f0 byte transfers (max sl811h buffer)
+	sta len	
+#if 0 // def DEBUG_HW
+	jsr hexout
+#endif		
+	iny
+	lda (ctrlptr),y
+	bne lenerr		; we currently support only up to 64 byte transfers
+	clc
+	rts
+
+
+lenerr	lda #ERR_PKLEN
+	DEXIT("SET_PARAMS X")
+	sec
+	rts
+	.)
+
+; set ctrlptr from the control block
+ptr_to_buffer .(
+	ldy #HOST_CTRL_BUFADDR	; put buffer address into ctrlptr
+	lda (ctrlptr),y
+	pha
+	iny
+	lda (ctrlptr),y
+	sta dataptr+1
+	pla
+	sta dataptr
+	rts
+	.)
+
+&max3421_get .(
+	sta ctrlptr
+	sty ctrlptr+1
+
+	; clear xfer done irq, just in case
+	wreg(rHIRQ, bmHXFRDNIRQ)
+
+	jsr set_params
+	bcs end
+
+	; set dataptr to data buffer address
+	jsr ptr_to_buffer
+
+	jmp get_in
+end	rts
+	.)
+
+; IN transfer into buffer as given (in ctrlptr)
+get_in	.(
+#if 0 //def DEBUG_HW
+	lda endpt
+	;ldx len
+	ldy maxpklen
+	DMSG("GET_IN")
+#endif
+	; set retry count
+	lda #10
+	sta rcnt
+
+	; set byte count
+	lda #0
+	sta bcnt
+
+	; clear rvdavirq (twice, for double buffering, just in case)
+	wreg(rHIRQ, bmRCVDAVIRQ)
+	wreg(rHIRQ, bmRCVDAVIRQ)
+
+	; set toggle
+	ldy #HOST_CTRL_FLAGS
+	lda (ctrlptr),y
+	and #HOST_FLAG_DATA1
+	bne togd1
+	lda #bmRCVTOG0
+	.byt $2c
+togd1	lda #bmRCVTOG1
+	wrac(rHCTL)
+
+againin
+	; start command
+	lda #tokIN
+	ora endpt	; BULK/IN command is $0x ORd with endpoint number
+	jsr docmd
+	beq noerror	; hrSUCCESS is 0
+
+	cmp #hrSTALL
+	beq error
+	cmp #hrTIMEOUT
+	beq error
+	cmp #hrNAK
+	bne doretry
+	bit flags	; check HOST_FLAG_IGNORE_NAK in bit 7
+	bpl doretry
+	lda #0
+	jmp no_nak
+doretry
+	dec rcnt
+#ifdef DEBUG_HW
+	cmp #hrNAK
+	beq nodbg
+	ldy rcnt
+	DMSG("RETRY IN")
+nodbg 	lda rcnt
+#endif
+	beq error
+	jmp againin
+error	
+#ifdef DEBUG_HW
+	DMSG("GET_IN ERR")
+#endif
+	ldy #ERR_DEVICE
+	sec
+	rts
+noerror	
+	; transfer data
+	; read number of bytes
+	rreg(rRCVBC)
+#ifdef DEBUG_HW
+	pha
+	lda #"R"
+	jsr printc
+	pla
+	pha
+	jsr hexout
+	pla
+#endif
+no_nak	
+	sta cnt
+
+	; do we want that much data?
+	clc
+	adc bcnt
+	cmp len
+	bcc lenok
+	lda len
+lenok 	sec
+	sbc bcnt
+	sta cnt	
+
+	; data available?
+	cmp #0
+	beq nodata
+
+	; read data
+	max3421e_enable()
+
+	lda #rRCVFIFO
+	spi_wra()
+
+	ldy #0
+next	spi_wra()
+	sta (dataptr),y
+	iny
+	cpy cnt
+	bne next
+
+	max3421e_disable()
+
+nodata
+	; clear data available interrupt
+	wreg(rHIRQ, bmRCVDAVIRQ)
+	; update byte counter
+	lda cnt
+	clc
+	adc bcnt
+	sta bcnt
+
+	; are we done yet?
+	; was last packet full sized?
+	lda cnt
+	cmp maxpklen
+	bne done	; no, then no further packet to receive
+
+	; update pointer and length
+	lda cnt
+	clc
+	adc dataptr
+	sta dataptr
+	bcc nocarry
+	inc dataptr+1
+nocarry	
+	jmp againin
+
+done	; update DATA toggle
+	ldy #HOST_CTRL_FLAGS
+	rreg(rHRSL)
+	and #bmRCVTOGRD
+	beq data0
+	lda (ctrlptr),y
+	ora #HOST_FLAG_DATA1
+	bne wrtog
+data0	lda (ctrlptr),y
+	and #255-HOST_FLAG_DATA1
+wrtog	sta (ctrlptr),y
+
+	; done
+	lda bcnt
+	clc
+	rts
+	.)
+
+&max3421_control .(
+	//DMSG("CONTROL")
+	sta ctrlptr
+	sty ctrlptr+1
+
+#ifdef DEBUG_HW
+	lda #"!"
+	jsr printc
+#endif
+
+	jsr set_params
+	bcs err
+
+	; send setup packet
+	jsr sendsetup
+	bcs err
+
+	; set dataptr to data buffer address
+	jsr ptr_to_buffer
+
+	; set to DATA1 toggle
+	ldy #HOST_CTRL_FLAGS
+	lda (ctrlptr),y
+	ora #HOST_FLAG_DATA1
+	sta (ctrlptr),y
+
+        ; host to device or device to host
+        ldy #HOST_CTRL_SETUP
+        lda (ctrlptr),y
+        bmi receive
+
+	clc			; for outnodata
+	ldy len
+	beq outnodata		; e.g. setaddr does not have data to be sent
+
+	jsr do_out
+outnodata
+	php
+	pha
+
+	lda #tokHSIN		; HS_IN
+	bne dohs		; always
+
+receive
+	jsr get_in
+	php
+	pha
+
+	lda #tokHSOUT		; HS_OUT
+dohs	
+	//DMSG("DO_HS")
+	jsr docmd
+
+	pla
+	plp
+err	rts
+	
+	.)
+
+; OUT transfer into buffer as given (in ctrlptr)
+; len is the number of bytes to transfer in total
+do_out .(
+	//DMSG("DO_OUT")
+	; set retry count
+	lda #10
+	sta rcnt
+
+	; set byte count
+	lda #0
+	sta bcnt
+
+	; set toggle
+	ldy #HOST_CTRL_FLAGS
+	lda (ctrlptr),y
+	and #HOST_FLAG_DATA1
+	bne togd1
+	lda #bmSNDTOG0
+	.byt $2c
+togd1	lda #bmSNDTOG1
+	wrac(rHCTL)
+
+nextout
+	; computer number of bytes to transfer now
+	lda len
+	sec
+	sbc bcnt
+	cmp maxpklen
+	bcc lenok
+	lda maxpklen
+lenok	sta cnt
+
+	cmp #0
+	beq nodata
+
+	; write data to chip fifo
+	max3421e_enable()
+
+	lda #rSNDFIFO | 2	; OR#2 is write bit
+	spi_wra()
+
+	ldy #0
+next	lda (dataptr),y
+	spi_wra()
+	iny
+	cpy cnt
+	bne next
+
+	max3421e_disable()
+
+	tya
+nodata
+	; write number of bytes
+	wrac(rSNDBC)
+againout
+	; start command
+	lda endpt	; BULK/OUT command is bmOUTNIN ORd with endpoint number
+	ora #tokOUT
+	jsr docmd
+	beq noerror	; hrSUCCESS is 0
+
+retry	cmp #hrSTALL
+	beq error
+	cmp #hrTIMEOUT
+	beq error
+	cmp #hrNAK
+	bne doretry
+	bit flags	; check HOST_FLAG_IGNORE_NAK in bit 7
+	bpl doretry
+	lda #0
+	jmp no_nak
+doretry
+	dec rcnt
+	beq error
+	jmp againout
+error	ldy #ERR_DEVICE
+	sec
+	rts
+noerror	
+	; update byte counter
+	lda cnt
+	clc
+	adc bcnt
+	sta bcnt
+
+	; are we done yet?
+	; was last packet full sized?
+	lda cnt
+	cmp maxpklen
+	bne done	; no, then no further packet to send
+
+	; update pointer and length
+	lda cnt
+	clc
+	adc dataptr
+	sta dataptr
+	bcc nocarry
+	inc dataptr+1
+nocarry	
+	jmp nextout
+
+done	; update DATA toggle
+	ldy #HOST_CTRL_FLAGS
+	rreg(rHRSL)
+	and #bmSNDTOGRD
+	beq data0
+	lda (ctrlptr),y
+	ora #HOST_FLAG_DATA1
+	bne wrtog
+data0	lda (ctrlptr),y
+	and #255-HOST_FLAG_DATA1
+wrtog	sta (ctrlptr),y
+
+	; done
+	lda bcnt
+no_nak	
+	clc
+	rts
+	.)
+
+; trigger command and wait for completion
+; must keep y
+docmd 	.(
+	pha
+	; clear xfer done irq, just in case
+	wreg(rHIRQ, bmHXFRDNIRQ)
+
+#if 0 //def DEBUG_HW
+	lda #"O"
+	jsr printc
+	pla
+	pha
+	jsr hexout
+#endif
+	pla
+	wrac(rHXFR)	; store in HXFR
+
+	; wait for completion
+l0	
+#if 0 //def DEBUG_HW
+	inc $8026
+#endif
+	rreg(rHIRQ)
+	and #bmHXFRDNIRQ
+	beq l0
+	wrac(rHIRQ)	; clear interrupt bit
+
+	; check result
+	rreg(rHRSL)
+	and #bmHRESULT	; the four result bits
+	;cmp #hrBUSY
+	;beq l0
+	;cmp #0
+#if 0 //def DEBUG_HW
+	pha
+	jsr hexout
+	pla
+#endif
+	rts
+	.)
+
+; send a setup packet
+sendsetup .(
+#ifdef DEBUG_HW
+lda #"S"
+jsr printc
+#endif
+	max3421e_enable()
+
+	lda #rSUDFIFO | 2	; OR#2 to set the write bit
+	spi_wra()
+
+	; copy control message to chip fifo
+        ldy #HOST_CTRL_SETUP
+c1
+        lda (ctrlptr),y
+#ifdef DEBUG_HW
+	pha
+        jsr hexout
+	pla
+#endif
+	spi_wra() 		; setup packet into sl811 buffer
+        iny
+        cpy #HOST_CTRL_SETUP+8
+        bcc c1
+
+	max3421e_disable()
+
+	ldy #10
+retry
+	; start SETUP
+	lda #tokSETUP
+	jsr docmd
+	beq noerror	; hrSUCCESS is 0
+
+	dey
+	bne retry
+	sec
+	ldy #ERR_DEVICE
+	rts
+noerror
+	clc
+	rts
+	.)
+
+
+; set the preamble variable
+; in: AC = device speed, rootspd = hub speed (0/1 = low/full speed)
+; must preserve y
+set_pream .(
+	cmp rootspd
+	beq no_pream	; both either low or full, then no preamble
+	cmp #0		; is device low
+	bne no_pream	; no, device is high (and hub low, then no preamble)
+	rreg(rMODE)
+	ora #bmHUBPRE
+	bne setit
+no_pream
+	rreg(rMODE)
+	and #255-bmHUBPRE
+setit	
+#if 0 //def DEBUG_HW
+	pha
+	lda #"P"
+	jsr printc
+	pla
+	pha
+	jsr hexout
+	pla
+#endif
+	wrac(rMODE)
+	rts
+	.)
+
+; check USB device detection
+; C=1 device detected
+; C=0 device not present
+queryusbdevice .(
+	wreg(rHCTL, bmSAMPLEBUS)
+
+	; wait for end of sampling
+	; Note: appnotes says SAMPLEBUS is cleared when sampling finished
+	; however, it cannot be read. Other code just reads HSRL without further
+	; ado. We wait for one frame
+	lda #1	
+	jsr pause
+
+	; check bus status
+	rreg(rHRSL)
+	and #bmJSTATUS + bmKSTATUS	; if both are zero
+	beq nodevice
+	lsr				; div by 2, so is $00/20/40/60, but never neg
+	sta polled			; store whether device has been detected
+
+	rreg(rMODE)
+	and #bmLOWSPEED
+	beq highspeedcheck
+	lda #bmJSTATUS>>1		; low speed check
+	.byt $2c
+highspeedcheck
+	lda #bmKSTATUS>>1
+	and polled
+	beq isfullspeed
+	lda #0				; low speed
+	.byt $2c
+isfullspeed
+	lda #1
+	pha
+	; clear connect IRQ, as may be set by changing LOWSPEED or SAMPLEBUS
+	wreg(rHIRQ, bmCONDETIRQ)
+	pla
+	sec
+	rts
+nodevice
+	clc				; then no device - C=0 (0 is < 1)
+	//DMSG("QUERY USB DEV END X")
+	rts
+	.)
+
+; reset the chip and USB	
+;1.  Set BUSRST = 1.
+;2.  Test for BUSRST = 0 or respond to the BUSEVENTIRQ.
+;3.  Turn on frame markers by setting SOFKAENAB = 1.
+;4.  Wait for at least one FRAMEIRQ.
+
+usbreset .(
+	; switch off sof frames
+	rreg(rMODE)
+	and #255-bmSOFKAENAB
+	wrac(rMODE)
+
+	; set BUSRST to 1
+	wreg(rHCTL, bmBUSRST)
+
+	; wait for BUSRST to become 0
+l0	rreg(rHCTL)
+	and #bmBUSRST
+	bne l0
+
+&startsof
+	; clear frame irq
+	wreg(rHIRQ, bmFRAMEIRQ)
+
+	; turn on frame markers
+	; When the CPU sets SOFKAENAB = 1, the SIE automatically generates 1-millisecond frame
+	; markers. If the bit LOWSPEED = 0, the SIE generates SOF packets. If LOWSPEED = 1, the SIE
+	; generates keep-alive pulses.
+	rreg(rMODE)
+	ora #bmSOFKAENAB
+	wrac(rMODE)
+
+	; The SOF or KA pulses start after the SOFKAENAB bit has asserted for 1 millisecond. If the
+	; CPU sets SOFKAENAB = 0 while the SIE is generating a frame marker, the SIE completes the
+	; signaling before shutting off the frame markers.
+	;
+	; wait for first frame
+l1	rreg(rHIRQ)
+	and #bmFRAMEIRQ
+	beq l1
+	wrac(rHIRQ)
+
+	rts
+	.)
+
+
+	.)
+

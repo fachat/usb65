@@ -1,0 +1,110 @@
+/*
+    (C) 2011 Andre Fachat
+
+    This file is part of the 6502 USB Host Driver.
+
+    The 6502 USB Host Driver is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The 6502 USB Host Driver is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    Lesser GNU General Public License for more details.
+
+    You should have received a copy of the Lesser GNU General Public License
+    along with the 6502 USB Host Driver. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/*
+ * requires SL811_HOST to be set to the respective
+ * base addresses
+ */
+
+#ifndef SL811_HOST_I65
+#define SL811_HOST_I65
+
+/*#define	SL811_HOST	$ec98*/
+/*#define	SL811_DEVICE	$ec90*/
+
+; SL811 I/O addresses - Host
+#define	SL811H_REG   	SL811_HOST
+#define	SL811H_DATA  	SL811_HOST+1
+
+; SL811 host register set
+#define	SL811H_HOSTCTL	0	/* USB host control register */
+#define	SL811H_BUFADDR	1	/* buffer address register */
+#define	SL811H_BUFLEN	2	/* buffer length register */
+#define	SL811H_PIDEP	3	/* PID and EndPoint number (write only) */
+#define	SL811H_PKSTAT	3	/* packet status (read only) */
+#define	SL811H_FNADDR	4	/* USB function address (write only) */
+#define	SL811H_XFERCNT	4	/* number of bytes left to transfer (read only) */
+#define	SL811H_MAINCTL	5	/* main control register (write only) */
+
+#define	SL811H_INTSTAT	13	/* interrupt status (write: enable, read is status) */
+#define	SL811H_HWREL	14	/* hardware release register (read only) */
+#define	SL811H_SOF_LOW	14	/* SOF value lowest 8 bit (write only) */
+#define	SL811H_CTRL2	15	/* control register 2 */
+
+#define	STREGH(reg)	ldx #reg:jsr storeregh
+#define	LDREGH(reg)	ldx #reg:jsr loadregh
+#define	STREGXH()	jsr storeregh
+
+#define	STH_HOSTCTL	STREGH(SL811H_HOSTCTL)
+#define	STH_BUFADDR	STREGH(SL811H_BUFADDR)
+#define	STH_BUFLEN	STREGH(SL811H_BUFLEN)
+#define	STH_PIDEP	STREGH(SL811H_PIDEP)
+#define	STH_FNADDR	STREGH(SL811H_FNADDR)
+#define	STH_MAINCTL	STREGH(SL811H_MAINCTL)
+#define	STH_INTSTAT	STREGH(SL811H_INTSTAT)
+#define	STH_SOF_LOW	STREGH(SL811H_SOF_LOW)
+#define	STH_CTRL2	STREGH(SL811H_CTRL2)
+
+#define	LDH_PKSTAT	LDREGH(SL811H_PKSTAT)
+#define	LDH_XFERCNT	LDREGH(SL811H_XFERCNT)
+#define	LDH_INTSTAT	LDREGH(SL811H_INTSTAT)
+#define	LDH_HWREL	LDREGH(SL811H_HWREL)
+
+; bit mask for host control register HOSTCTL
+#define HOSTCTL_ARM       $01
+#define HOSTCTL_ENABLE    $02
+#define HOSTCTL_IN        $00
+#define HOSTCTL_OUT       $04
+#define HOSTCTL_ISOCH     $10
+#define HOSTCTL_SYNCSOF   $20
+#define HOSTCTL_TOGGLE    $40
+#define HOSTCTL_PREAMBLE  $80
+
+; control reg 1 (main control, reg 5) masks
+#define MCNTRL_SOF_ENA   $01
+#define MCNTRL_FORCE     $18
+#define MCNTRL_NORMAL    $00
+#define MCNTRL_SE0       $08    /* reset */
+#define MCNTRL_J         $10
+#define MCNTRL_K         $18    /* resume */
+#define MCNTRL_LSPD      $20	/* set for low speed */
+#define MCNTRL_SUSPEND   $40
+
+; control reg 2 masks
+#define CTLREG2_SOF_MASK  $3F
+#define CTLREG2_DSWAP     $40	/* set for low speed */
+#define CTLREG2_HOST      $80
+#define CTLREG2_INIT       (CTLREG2_HOST | $2e)
+
+; relevant bits in the interrupt status register
+#define INT_EP0DONE   $01
+#define INT_PRESENT   $40
+#define INT_DPLUS     $80	/* state of D+, only in INTSTATREG */
+
+#define	PKSTAT_ACK	$01
+#define	PKSTAT_ERROR	$02
+#define	PKSTAT_TIMEOUT	$04
+#define	PKSTAT_SEQ	$08
+#define	PKSTAT_SETUP	$10
+#define	PKSTAT_OVERFL	$20
+#define	PKSTAT_NAK	$40
+#define	PKSTAT_STALL	$80
+
+#endif
+

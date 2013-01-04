@@ -1,0 +1,313 @@
+/*
+    (C) 2011 Andre Fachat
+
+    This file is part of the 6502 USB Host Driver.
+
+    The 6502 USB Host Driver is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The 6502 USB Host Driver is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    Lesser GNU General Public License for more details.
+
+    You should have received a copy of the Lesser GNU General Public License
+    along with the 6502 USB Host Driver. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/*
+ * Device detection callbacks
+ *
+ * breakout from main program, as they can be used
+ * by multiple implementations
+ */
+
+	.(
+
+	.data
+
+cslot	.byt 0		; temp store for control slot
+regret  .byt 0          ; collect flags for return after registering device
+
+	.text
+
+; call back when a device is attached
+; called from usb_polldev
+; ac contains speed of device (0=low, 1=full)
+; output ignored, i.e. may destroy a/x/y/s
+&usb_cb_attach .(
+	tax
+	bne fullspeed
+	ldy #MSG_DETECT_LOW
+	.byt $2c
+fullspeed
+	ldy #MSG_DETECT_FULL
+	jmp print
+	.)
+
+; call back when a device is detected
+; called from usb_polldev
+; x/y contains pointer to USB device descriptor, ac is dev number
+; when returns with sec, device is ignored
+&usb_cb_detected .(
+	stx ptr
+	sty ptr+1
+	sta cslot
+#ifdef DEBUG
+	jsr detected
+	php
+	pha
+	tya
+	pha
+	txa
+	pha
+	jsr waitkey
+	pla
+	tax
+	pla
+	tay
+	pla
+	plp
+	rts
+detected
+	lda #$12	; length of device descriptor
+	jsr print_hex_buffer
+#endif
+	lda #0
+	sta regret
+
+	ldy #DESC_DEV_CLASS
+	lda (ptr),y
+	beq perifc
+	cmp #CLASS_HUB
+	beq hub
+	cmp #CLASS_HID
+	beq perifc	; to be verified
+	sec
+	rts
+	; ------------------------------------------------------------------
+	; handle a generic device (where the actual class/subclass/proto
+	; is done in the interfaces
+perifc
+	jsr dseparator
+
+	; print out the device descriptor anyway
+	jsr print_dev_desc
+
+	lda cslot
+	jsr usbgen_getset_conf
+	bcc gotcfg
+	DMSG("CB_DETECTED X")
+	rts
+nextcfg
+	jsr usbgen_next_desc	; loop to get next interface descriptor
+	bcs donecfg
+	cmp #DESC_TYPE_INTERFACE
+	bne gotcfg
+
+	; ptr contains pointer to interface desc
+	ldy #DESC_IFC_CLASS
+	lda (ptr),y
+	cmp #CLASS_HID
+	bne next_ifc
+
+	; go a HID interface desc	
+	iny			; DESC_IFC_SUBCLASS
+	lda (ptr),y
+	cmp #SUBCLASS_HID_KMT
+	bne next_ifc
+
+	iny			; DESC_IFC_PROTO
+	lda (ptr),y
+	cmp #PROT_HID_KMT_KEYBOARD
+	beq got_kbd
+	cmp #PROT_HID_KMT_MOUSE
+	beq got_mouse
+next_ifc
+	jmp gotcfg		; next interface
+
+got_kbd	lda cslot
+	jsr usb_register_kbd_interface
+	bcc gotcfg
+	bcs donecfg
+got_mouse
+	lda cslot
+	jsr usb_register_mouse_interface
+	bcs donecfg
+gotcfg
+	ora regret
+	sta regret
+	jmp nextcfg
+
+donecfg lda regret
+	clc
+	rts
+
+	; ------------------------------------------------------------------
+	; handle a hub being attached
+hub	
+	jsr dseparator
+
+	ldy #MSG_DETECT_HUB
+	jsr print
+
+	ldy #MSG_DEVICE_NO
+	lda cslot
+	jsr printx
+
+	jsr print_dev_desc
+
+	lda cslot
+	; destroys ptr, buffer!
+	; returns REGISTER_OK/_CTRL_USED
+	jmp usb_register_hub_device
+	.)
+
+
+&print_hex_buffer .(
+	stx ptr
+	sty ptr+1
+	tax
+	lda #13
+	jsr printc
+	lda #")"
+	jsr printc
+	ldy #0
+l	lda (ptr),y
+	jsr hexout
+	iny
+	dex
+	bne l
+	lda #13
+	jmp printc
+	.)
+
+print_dev_desc .(
+	ldy #MSG_USB_VERSION
+	jsr print
+	ldy #DESC_DEV_USBSPEC+1
+	lda (ptr),y
+	jsr hexout
+	dey
+	lda (ptr),y
+	jsr hexout
+	lda #13
+	jsr printc
+
+	ldy #MSG_VENDOR_PRODUCT
+	jsr print
+	ldy #DESC_DEV_VENDOR+1
+	lda (ptr),y
+	jsr hexout
+	dey
+	lda (ptr),y
+	jsr hexout
+	lda #","
+	jsr printc
+	ldy #DESC_DEV_PRODUCT+1
+	lda (ptr),y
+	jsr hexout
+	dey
+	lda (ptr),y
+	jsr hexout
+	lda #13
+	jsr printc
+
+	ldy #MSG_CLASS_SUBCLASS
+	jsr print
+	ldy #DESC_DEV_CLASS
+	lda (ptr),y
+	jsr hexout
+	lda #","
+	jsr printc
+	ldy #DESC_DEV_SUBCLASS
+	lda (ptr),y
+	jsr hexout
+	lda #13
+	jsr printc
+
+	ldy #DESC_DEV_MAXREQSIZE
+	lda (ptr),y
+	ldy #MSG_MAX_PACKET_SIZE
+	jsr printx
+
+	ldy #DESC_DEV_NUMCONF
+	lda (ptr),y
+	ldy #MSG_NUM_CONFIG
+	jsr printx
+
+	ldy #DESC_DEV_STRIDX_SERIAL
+	lda (ptr),y
+	pha
+	ldy #DESC_DEV_STRIDX_PROD
+	lda (ptr),y
+	pha
+	ldy #DESC_DEV_STRIDX_MANU
+	lda (ptr),y
+	beq nomanu
+	ldy #MSG_MANUFACTURER
+	jsr getprintstr
+nomanu	pla
+	beq noprod
+	ldy #MSG_PRODUCT
+	jsr getprintstr
+noprod	pla
+	beq noser
+	ldy #MSG_SERIAL
+	jsr getprintstr
+noser	rts
+	.)
+
+getprintstr .(
+	pha
+	jsr print
+	pla
+	tay
+	ldx #DESC_TYPE_STRING
+	lda cslot
+	jsr usb_getdesc
+	bcs err
+	stx ptr
+	sty ptr+1
+	lsr
+	tax
+	dex
+	ldy #2
+pr	lda (ptr),y
+	jsr isolatin1outc
+	iny
+	iny
+	dex
+	bne pr
+cr	lda #13
+	jmp printc
+err	jsr hexout
+	jmp cr
+	.)
+
+isolatin1outc .(
+	cmp #$40
+	bcc ok
+	cmp #$60
+	bcc or80
+	and #$df
+	.byt $2c
+or80	ora #$80
+ok	jmp printc
+	.)
+	
+
+; general callback when a poll has returned with carry set,
+; which disables the poll callback
+&usb_cb_disable .(
+	DMSG("USB_CB_DISABLE")
+	jsr waitkey
+	DSTACK()
+	rts
+	.)
+
+
+	.)
+

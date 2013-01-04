@@ -1,0 +1,175 @@
+/*
+    (C) 2011 Andre Fachat
+
+    This file is part of the 6502 USB Device Driver.
+
+    The 6502 USB Device Driver is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The 6502 USB Device Driver is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    Lesser GNU General Public License for more details.
+
+    You should have received a copy of the Lesser GNU General Public License
+    along with the 6502 USB Device Driver. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/*
+ * messages for the USB host controller
+ *
+ * requires the variable ZPRINTPTR to be set as zeropage
+ * requires "printc" to be set to print a char without 
+ *    modifying other registers
+ * requires "hexout" to print a hex byte value
+ *
+ */
+
+	.(
+	; print a message, index of message in YR
+	; destroys AC, YR, keeps XR
++print	.(
+	tya
+	bpl msg
+	; error messages
+	eor #$ff
+	tay
+	lda errl,y
+	pha
+	lda errh,y
+	tay
+	pla
+	jmp printv
+	
+msg	lda idxl,y
+	pha
+	lda idxh,y
+	tay
+	pla
+	; fall through to printv
+	.)
+	; print a zero-delimited string at address in AC/YR
+	; destroys AC, YR, keeps XR
++printv .(
+	sta ZPRINTPTR
+	sty ZPRINTPTR+1
+	
+	ldy #0
+loop	lda (ZPRINTPTR),y
+	beq pend
+	jsr printc
+	iny
+	bne loop
+pend	rts
+	.)
+
+	; print a message, index of message in XR
+	; then a hex byte value (in AC), then carriage return
+	; destroys AC, YR, keeps XR
++printx	.(
+	pha
+	jsr print
+	pla
+	jsr hexout
+	lda #13
+	jmp printc
+	.)
+
+	.data
+
+m0	.asc "COPYRIGHT 2011,2013 A.FACHAT",13,0
+m1	.asc "PET KEYBOARD DRIVER",13,0
+/*
+m1	.asc "VENDOR, PRODUCT: ",0
+m2	.asc "CLASS, SUBCLASS: ",0
+m3	.asc "MAX PACKET SIZE: ",0
+m4	.asc "MANUFACTURER: ",0
+m5	.asc "SL811 V1.2",13,0
+m6	.asc "SL811 V1.5",13,0
+m7	.asc "LOW SPEED DEVICE DETECTED",13,0
+m8	.asc "FULL SPEED DEVICE DETECTED",13,0
+m9	.asc "INITIALIZED",13,0
+m10	.asc "HUB DETECTED",13,0
+m11	.asc "DETACH DETECTED",13,0
+m12	.asc "ATTACH DETECTED",13,0
+m13	.asc "USB VERSION: ",0
+m14	.asc "PRODUCT: ",0
+m15	.asc "SERIAL NO: ",0
+m16	.asc "NUMBER OF CONFIGURATIONS: ",0
+m17	.asc "HID DETECTED",0
+m18	.asc "HID:KEYBOARD DETECTED",0
+m19	.asc "HID:MOUSE DETECTED",0
+m20	.asc "DEVICE NO: ",0
+m21	.asc 13, "PLEASE PRESS KEY",13, 0
+*/
+
+e0	.asc "BUFFER OVERFLOW ERROR",13,0
+e1	.asc "ENDPOINT NUMBER ERROR",13,0
+e2	.asc "DEVICE ERROR",13,0
+e3	.asc "SPEED NOT SUPPORTED",13,0
+
+/*
+e0	.asc "ERROR GETTING DESCRIPTOR",13,0
+e1	.asc "ERROR GETTING CONFIGURATION",13,0
+e2	.asc "ERROR GETTING STRING",13,0
+e3	.asc "ERROR GETTING VERSION",13,0
+e4	.asc "GOT ERROR FROM DEVICE: ",0
+e5	.asc "NO HARDWARE DETECTED",13,0
+e6	.asc "NOT ENOUGH SPACE FOR NEW HUB",13,0
+e7	.asc "NOT ENOUGH SPACE FOR NEW DEVICE",13,0
+e8	.asc "ROOT DEVICE DETACHED",13,0
+e9	.asc "PACKET TOO LARGE",13,0
+e10	.asc "UNKNOWN DEVICE",13,0
+*/
+
+idxl	.byt <m0, <m1 /*, <m2, <m3, <m4, <m5, <m6, <m7, <m8
+	.byt <m9, <m10, <m11, <m12, <m13, <m14, <m15, <m16
+	.byt <m17, <m18, <m19, <m20, <m21*/
+
+idxh	.byt >m0, >m1 /*, >m2, >m3, >m4, >m5, >m6, >m7, >m8
+	.byt >m9, >m10, >m11, >m12, >m13, >m14, >m15, >m16
+	.byt >m17, >m18, >m19, >m20, >m21*/
+
+errl	.byt <e0, <e1, <e2, <e3 /*, <e4, <e5, <e6, <e7, <e8
+	.byt <e9, <e10*/
+
+errh 	.byt >e0, >e1, >e2, >e3 /*, >e4, >e5, >e6, >e7, >e8
+	.byt >e9, >e10*/
+
+	.text
+
+; output a hex value
++hexout .(
+        pha
+        lsr
+        lsr
+        lsr
+        lsr
+        jsr nibout
+        pla
+        and #$0f
+nibout
+        cmp #10
+        bcc x
+        adc #$06        ; $41 ("a") - $30 ("0") - carry - 10 (AC)
+x       adc #$30        ; when digit, add "0"
+        jmp printc
+        .)
+
++dseparator .(
+	lda #"="
+	.byt $2c
++separator 
+	lda #"-"
+	ldy #10
+l0	jsr printc
+	dey
+	bne l0
+	rts
+	.)
+
+
+	.)
+

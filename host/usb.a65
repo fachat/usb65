@@ -1,0 +1,826 @@
+/*
+    (C) 2011 Andre Fachat
+
+    This file is part of the 6502 USB Host Driver.
+
+    The 6502 USB Host Driver is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The 6502 USB Host Driver is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    Lesser GNU General Public License for more details.
+
+    You should have received a copy of the Lesser GNU General Public License
+    along with the 6502 USB Host Driver. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/*
+ * device-independent USB functionality
+ * i.e. independent from the USB host hardware
+ */
+
+
+/*
+ * external USB interface
+ *
+ * usb_init
+ *	init USB hardware
+ *	returns clc when found ok, sec otherwise
+ * usb_polldev
+ *	poll for device changes
+ *	calls back to main program to handle actual events:
+ *	usb_cb_attach
+ *		ac=speed (0=low, 1=full)
+ *	usb_cb_detected
+ *		ac is slot no
+ *		xr/yr is pointer to device descriptor
+ *		descriptor only valid until next usb_* call
+ *		call must read configuration(s) and decide which config
+ *		to use
+ *		expected return:
+ *		clc on ok, sec when to ignore
+ *		On ok, ac has HOST_REGISTER_* ret value to determine whether
+ *		control slot can be closed.
+ *		usb_cb_detected calls into usb_register_endpoint to register
+ *		poll callbacks for an endpoint
+ *		poll callback routine is called from usb_polldev as well, with ac containing
+ *		the transparent data from above
+ *	usb_cb_disable
+ *		device has been disabled due to device poll callback returning an
+ *		error (AC has error number, xr has transparent data, y has slot num)
+ * usb_getconf
+ * 	gets a config descriptor 
+ *	ac=slot, yr=descriptor index
+ *	returns clc when ok, sec/ac=err on error
+ *	when ok, ac has len, x/y has pointer to data
+ * usb_setconf
+ *	Sets config for a device AC must hold config number to get
+ *	xr must hold slot number
+ * usb_getdesc 
+ * 	gets a string or other descriptor (for analysis/display of 
+ *	config/names)
+ *	ac=slot, xr=descriptor type, yr=descriptor index
+ *	returns clc when ok, sec/ac=err on error
+ *	when ok, ac has len, x/y has pointer to data
+ * usb_get
+ *	gets some data with IN PID. in: a/y has pointer to host_ctrl struct, with
+ *	FNADDR, ENDPOINT, dev speed, length, <buffer, >buffer
+ *	xr has slot number. FNADDR, ENDPOINT, dev speed is replaced with stored data from slot
+ *	returns clc on ok, with AC number of bytes tx'd
+ *	returns sec on error, with AC error code
+ */
+
+ /*
+ * usb host interface that is used here:
+ *
+ * usb_host_init
+ *      checks presence of hardware (SL811);
+ *	initializes hardware
+ *      return clc when ok, sec when not found
+ *      when found, return version in AC, as BCD
+ *      fastcall
+ * usb_host_polldev
+ *      checks if a device is present as root device
+ *      return clc when device found, sec when not
+ *      fastcall
+ * usb_host_devinit
+ *      init the SL811 and the USB bus
+ *      return clc when device found, sec when not
+ *      when device is found, return speed in AC
+ *      0=low speed
+ *      1=full speed
+ *      when device is not found, return error condition in AC
+ *      0=no device
+ *      routine is slow, calls pause
+ * usb_host_reset
+ *      reset the bus and configure for correct speed
+ *      input: AC=speed
+ *      0=low speed
+ *      1=full speed
+ * usb_host_control
+ *      send a SETUP packet, and receive results when
+ *      applicable
+ *      in: A/Y contain ptr to request buffer (HOST_CTRL_*)
+ *      return clc on success, sec on error
+ *      on success, AC has number of bytes transferred
+ *      on error, AC has error condition
+ */
+
+#ifdef SL811_HOST
+#define	usb_host_init		sl811h_init
+#define	usb_host_polldev	sl811h_polldev
+#define	usb_host_devinit	sl811h_devinit
+#define	usb_host_reset		sl811h_reset
+#define	usb_host_control	sl811h_control
+#define	usb_host_get		sl811h_get
+#endif
+
+
+#ifdef MAX3421_HOST
+#define	usb_host_init		max3421_init
+#define	usb_host_polldev	max3421_polldev
+#define	usb_host_devinit	max3421_devinit
+#define	usb_host_reset		max3421_reset
+#define	usb_host_control	max3421_control
+#define	usb_host_get		max3421_get
+#endif
+
+	.(
+
+#define	MAX_PACKET	$f0
+
+#ifdef SL811_HOST
+#define SL811_HOST      $ec98
+#include "sl811_host.a65"
+#endif
+#ifdef MAX3421_HOST
+#define SL811_HOST      $ec98
+#include "max3421e.a65"
+#endif
+
+#include "hub.a65"
+#include "usbgen.a65"
+#include "kbd.a65"
+#include "mouse.a65"
+#include "detect.a65"
+
+
+&usb_register_hub_device = hub_register_device
+&usb_register_kbd_interface = kbd_register_interface
+&usb_register_mouse_interface = mouse_register_interface
+
+	.data
+
+; setup packet to set device address
+setaddr .byt 0, 0, 0, 0	; FNADDR, ENDPOINT, SPEED, FLAGS
+	.word 0		; max endpoint packet size per tx (from EP descriptor)
+	.word 0		; bytes to transfer in data stage (possibly multiple tx)
+	.word buffer
+	.byt $00, $05, $01, $00, $00, $00, $00, $00
+
+; setup packet to set configuration
+setconf .byt 0, 0, 0, 0
+	.word 8 
+	.word 0
+	.word buffer
+	.byt $00, $09, $01, $00, $00, $00, $00, $00
+ 
+; Get device descriptor
+; use MAX_PACKET as size, not $12, as we not only get device descriptor
+; but also other descriptors with this setup
+; Note that Linux for example does a two step approach. It only reads
+; the pure device descriptor - which contains the full length, then 
+; probably allocates memory for it and then only reads the full descriptor
+getdesc	.byt 0, 0, 0, 0
+	.word 8		; max endpoint packet size per tx (from EP descriptor)
+	.word MAX_PACKET  ; data stage transfer size (possibly multiple tx)
+	.word buffer
+	.byt $80, $06, $00, $01, $00, $00, MAX_PACKET, $00
+ 
+; Get configuration descriptor
+;
+getconf	.byt 0, 0, 0, 0
+	.word 0		; max endpoint packet size per tx (from EP descriptor)
+	.word MAX_PACKET  ; data stage transfer size (possibly multiple tx)
+	.word buffer
+	.byt $80, $06, $00, $02, $00, $00, MAX_PACKET, $00
+
+
+;-----------------------------------------------------------
+
+state 	.byt 0		; master state (80=hw found, +40=root device found)
+
+tptr	.word 0		; temporary var
+
+
+	.bss
+
+; i/o buffer for the sl811
+&buffer	.dsb MAX_PACKET,0
+
+; table of device entries
+
+#define	MAX_DEV		16	/* maximum number of concurrent devices is 7
+				   we need one more per actual devices, as during endpoint enumeration
+				   we need one entry to store the data from the control endpoint
+				   of the device
+				 */
+
+; abstracted from the class/subclass/protocol definition
+#define	SUP_TYPE_NONE	0
+#define	SUP_TYPE_HUB	1
+#define	SUP_TYPE_KEYB	2
+#define	SUP_TYPE_MOUSE	3
+
+curslot .byt 0		; current index in device table
+
+devnum	.dsb MAX_DEV	; valid device numbers, >127 is unused
+devdata	.dsb MAX_DEV	; transparent data given at device register, given back at poll
+devspeed .dsb MAX_DEV	; speed for device
+devendpt .dsb MAX_DEV	; speed for device
+devparent .dsb MAX_DEV	; parent device number (<0 for root device)
+devplenl .dsb MAX_DEV	; low byte of maximum packet length for device
+devplenh .dsb MAX_DEV	; high byte of maximum packet length for device
+devptrl	.dsb MAX_DEV	; low byte of poll address 
+devptrh	.dsb MAX_DEV	; high byte of poll address
+devtog .dsb MAX_DEV	; current toggle value (from CTRL_FLAGS)
+
+;-----------------------------------------------------------
+; initialization
+
+	.text
+
+&usb_init .(
+	DENTER("USB_INIT")
+
+	jsr init_devno
+
+	ldy #0
+	lda #$ff
+i1	sta devnum,y	; illegal device num
+	iny
+	cpy #MAX_DEV
+	bne i1
+
+	jsr hub_init	; init hub structures
+
+	jsr usb_host_init	; init hardware
+	bcs err
+	lda #$80
+	sta state
+	rts
+err	lda #$00
+	sta state
+	lda #ERR_NO_HW
+	rts
+	.)
+
+; poll routine called from external loop
+; polls all the devices for changes and in turn calls back the
+; device polls (usb_cb_attach, usb_cb_detected, polls given by usb_cb_detected, ...)
+&usb_polldev .(
+#ifdef DEBUG_POLL
+	DDEBUG(lda state)
+	DENTER("USB_POLLDEV")
+#endif
+	lda state
+	bpl no_hw
+	and #$40		; we've detected a root device previously
+	bne rootok
+	; check for root device
+	jsr usb_host_polldev
+	bcs nodev		; no device found -> exit 
+	; found device
+	jsr usb_host_devinit	; init a root device
+	bcs nodev		; no root device, then just exit
+
+	pha			; save speed value
+
+	jsr usb_cb_attach	; callback (with speed in AC)
+
+	pla			; restore speed val
+	pha
+	jsr usb_host_reset	; reset usb bus
+
+	lda state		; set state such that host device is not polled anymore
+	ora #$40
+	sta state
+
+	pla
+	tax 			; current device speed
+	lda #<-1		; parent device number (<-1 for root device)
+	jsr usb_init_device	; init a device and set up poll 
+	bcs nodev
+
+rootok	; poll device detach
+	jsr usb_host_polldev
+	bcc do_root
+
+	DDEBUG(ldx state)
+	DMSG("DEVICE DETACH")
+
+	ldy #ERR_ROOT_DETACHED
+	jsr print
+
+	jsr detach_all
+	clc
+	rts
+do_root
+	jsr polldevices
+#ifdef DEBUG_POLL
+	DEXIT("USB_POLLDEV")
+#endif
+	clc			; we assume all detach etc events are handled by callbacks
+	rts
+nodev	clc
+#ifdef DEBUG_POLL
+	DEXIT("USB_POLLDEV N")
+#endif
+	rts
+no_hw	lda #ERR_NO_HW
+	sec
+err	DEXIT("USB_POLLDEV X")
+	rts
+	.)
+
+; called internally after detection of the root device
+; having been detached.
+; we simply callback all open slots (with detach), then
+; do a complete reset
+detach_all .(
+	DMSG("DETACH_ALL")
+	ldy #0
+	sty curslot
+dl	lda devnum,y
+	bmi dnext
+	jsr usb_detach_device
+	jmp detach_all
+
+dnext	inc curslot
+	ldy curslot
+	cpy #MAX_DEV
+	bne dl
+	jmp usb_init
+jmpl	jmp (ptr)
+	.)
+
+polldevices .(
+	ldx #0
+p0	stx curslot
+	txa
+	pha		; save current state, as poll may again call into usb, esp. usb_init_device (from hub)
+
+	lda devnum,x
+	bmi next
+	lda devptrl,x
+	sta tptr
+#ifdef DEBUG_POLL
+	DDEBUG(tay)
+#endif
+	lda devptrh,x
+	sta tptr+1
+#ifdef DEBUG_POLL
+	DMSG("LJMP")
+#endif
+	ora tptr
+	beq next	; address zero is no poll
+
+			; slot number in XR
+	lda devdata,x	; transparent data for poll in AC
+	clc		; signal a normal poll call (SEC would have cmd number in yr, see detach)
+	jsr ljmp
+#ifdef DEBUG_POLL
+	DMSG("RET DEV")
+#endif
+	bcc next
+	; error handling
+	tay		; error
+	pla		; saved state = curslot
+	tax
+	stx curslot
+	tya
+	ldy devdata,x	; slot in x, error in ac, data in y
+	jsr usb_cb_disable	; disable device due to error in poll
+	ldx curslot
+	DMSG("_DISABLE")
+	lda #$80
+	sta devnum,x
+	bne n2		; always
+
+next	pla
+	tax
+n2	inx
+	cpx #MAX_DEV
+	bne p0
+	rts
+
+&ljmp	jmp (tptr)
+	.)
+
+; must be called from usb_cb_detected (where applicable)
+; ac contains the config number to set, x is slot number
+; returns ac error code (when sec)
+&usb_setconf .(
+	sta setconf + HOST_CTRL_SETUP + 2
+	lda #<setconf
+	ldy #>setconf
+	jmp usb_control
+	.)
+
+; detect device, setup device and poll
+; ac has parent device number for device
+; i.e. device number of upstream hub, or <-1 for root
+; device/hub
+; xr has speed of device
+; returns new device num in ac
+;
+; if usb_init_device returns SEC, then the hub can for example shut down
+; power to the port (which would effectivly disable the device number, so
+; it can be safely reused)
+;
+&usb_init_device .(
+	DENTER("_INIT_DEVICE")
+	pha
+	jsr new_slot		; return new slot (not yet reserved) in yr
+	DMSG("NEW_SLOT")
+	pla
+	bcs nores
+
+	sty curslot
+
+	sta devparent,y		; save parent device number
+	txa
+	sta devspeed,y
+	; prepare data for usb_prepare_ctrl
+	lda #8	
+	sta devplenl,y		
+	lda #0
+	sta devplenh,y
+	sta devendpt,y
+	sta devptrl,y		; no callback
+	sta devptrh,y
+	sta devtog,y
+
+	jsr new_devno		; returns new reserved device no in AC
+	bcs nores
+	; here ac has new device number, y the new slot
+
+	sta devnum,y		; is needed by getdesc below! Reserves control slot!
+
+	jsr dosetaddr		; get new device num, set it to device
+	bcs errexit
+
+	ldy curslot
+	tya			; slot number
+	ldx #DESC_TYPE_DEVICE	; request device descriptor
+	ldy #0			; desc index 0
+	jsr usb_getdesc
+	bcc gotdesc
+	bcs errexit		; release resources (devnum, slot)
+
+	; nores does not release device no, as we did not get one
+nores	lda #ERR_RESOURCE_DEVICE
+	DEXIT("_INIT_DEVICE R")
+	rts
+gotdesc	
+	lda curslot		; "slot" number
+	DMSG("CURSLOT")
+	jsr usb_cb_detected
+	
+	ldy curslot
+	DMSG("CB_DETECT")
+	bcs errexit
+
+	ldx devnum,y	; return value, device number in AC (and control slot number in YR)
+
+	; if AC has HOST_REGISTER_CTRL_USED, then do not close control slot
+	and #HOST_REGISTER_CTRL_USED
+	bne no_ctrl_close
+
+	; close control slot	
+	lda #$80
+	sta devnum,y
+no_ctrl_close
+	txa
+	; carry is still clear
+	DEXIT("_INIT_DEVICE")
+	rts
+	; error exit, release the requested device number
+errexit	pha
+	DDEBUG(tax)
+	ldy curslot
+	lda devnum,y
+	DEXIT("_INIT_DEVICE X")
+	jsr free_devno
+	ldy curslot
+	lda #$80
+	sta devnum,y
+	pla
+	sec
+	rts
+	.)
+
+; this is called from a hub, when a port has been disconnected. 
+; As input it has in AC the device number of the disconnected device
+; it recursively loops over the device and all children (depth-first)
+; and calls a detach callback
+usb_detach_device .(
+	; check all children first
+	ldx #0
+l	ldy devnum,x
+	bmi not_active
+	cmp devparent,x
+	beq got_child
+not_active
+	inx
+	cpx #MAX_DEV
+	bne l
+	; then check the devices themselves
+	ldx #0
+l2	cmp devnum,x
+	beq got_dev
+next_dev
+	inx
+	cpx #MAX_DEV
+	bne l2
+	clc
+	rts
+
+got_child
+	pha
+	txa
+	pha
+	lda devnum,x		; device number in AC
+	jsr usb_detach_device	; recursively detach children first
+	pla
+	tax
+	pla
+	jmp not_active
+
+	; actually detach the devices
+got_dev
+	pha
+	txa
+	pha
+	lda devptrl,x
+	sta tptr
+	lda devptrh,x
+	sta tptr+1
+	ora tptr
+	beq no_ptr
+
+	lda devdata,x	; transparent data in AC
+	ldy #HOST_POLL_DETACHED	; device has been detached
+	sec		; SEC -> command in YR
+	jsr ljmp	; slot number in x
+no_ptr
+	pla
+	pha
+	tax
+	lda devnum,x
+	jsr free_devno
+	pla
+	tax
+	lda #$80
+	sta devnum,x
+	pla
+	jmp next_dev
+	.)
+
+; register a poll callback
+; a/y hold the address of a HOST_POLL_* struct
+; curslot holds the current device from usb_init_device
+; return new slow number for the registered endpoint in AC
+&usb_register_poll_cb .(
+	sta ptr
+	sty ptr+1
+
+	DENTER("REGISTER POLL CB")
+
+	jsr new_slot		; return new slot (not yet reserved) in yr
+	bcc gotres
+	lda #ERR_RESOURCE_DEVICE
+	DENTER("REGISTER POLL CB X")
+	rts
+gotres
+	tya
+	tax			; new slot number in xr
+	ldy curslot		; temporary slot number
+#ifdef DEBUG
+	lda #"?"
+	jsr printc
+	tya
+	jsr hexout
+	txa
+	jsr hexout
+#endif
+	lda devparent,y
+	sta devparent,x
+	lda devspeed,y
+	sta devspeed,x
+	lda devnum,y
+	sta devnum,x		; reserves new slot
+
+	ldy #HOST_POLL_ENDPOINT
+	lda (ptr),y
+	sta devendpt,x
+
+	iny			; HOST_POLL_DATA
+	lda (ptr),y
+	sta devdata,x
+
+	iny			; HOST_POLL_MAXPKLEN
+	lda (ptr),y
+	sta devplenl,x
+	iny
+	lda (ptr),y
+	sta devplenh,x
+
+	iny			; HOST_POLL_CALLBACK
+	lda (ptr),y
+	sta devptrl,x
+#ifdef DEBUG
+	jsr hexout
+#endif
+	iny
+	lda (ptr),y
+	sta devptrh,x
+#ifdef DEBUG
+	jsr hexout
+#endif
+	txa			; returns new slot number in AC
+	clc
+	DEXIT("REGISTER POLL CB")
+	rts
+	.)
+
+; getconf is actually get_config_descriptor
+; y has configuration index, starting from 0
+; ac has slot number
+&usb_getconf .(
+	ldx #DESC_TYPE_CONFIG
+	dey
+; x has descriptor type
+; y has descriptor index
+; ac has slot number
+&&usb_getdesc 
+	stx getdesc + HOST_CTRL_SETUP + 3
+	sty getdesc + HOST_CTRL_SETUP + 2
+	tax
+	lda #<getdesc
+	ldy #>getdesc
+	jsr usb_control
+	bcc gotdesc
+	rts
+gotdesc	ldx #<buffer
+	ldy #>buffer
+	rts
+	.)
+
+; converts the slot number in ac into fnaddr (back in ac)
+; preserves xr, destroys yr
+; must preserve carry!
+&usb_get_fnaddr .(
+	tay
+	lda devnum,y
+	rts
+	.)
+
+; prepares a control struct
+; in: address of control struct given in a/y
+; in: x holds slot number
+; uses ptr/ptr+1
+&usb_prepare_ctrl .(
+	sta ptr
+	sty ptr+1
+	stx curslot
+
+	ldy #HOST_CTRL_FNADDR
+	lda devnum,x
+	sta (ptr),y
+	iny		; HOST_CTRL_ENDPOINT
+	lda devendpt,x
+	sta (ptr),y
+	iny		; HOST_CTRL_SPEED
+	lda devspeed,x
+	sta (ptr),y
+
+	iny		; HOST_CTRL_FLAGS
+	lda (ptr),y
+	and #255-HOST_FLAG_DATA1
+	sta (ptr),y
+	lda devtog,x
+	ora (ptr),y
+	sta (ptr),y
+
+	iny		; HOST_CTRL_MAXPKLEN
+	lda devplenl,x
+	sta (ptr),y
+	iny		; HOST_CTRL_MAXPKLEN+1
+	lda devplenh,x
+	sta (ptr),y
+	lda ptr
+	ldy ptr+1
+	rts
+	.)
+
+; de-prepare the control data
+&usb_deprep_ctrl .(
+	php
+	pha
+	ldx curslot
+	ldy #HOST_CTRL_FLAGS
+	lda (ptr),y
+	and #HOST_FLAG_DATA1
+	sta devtog,x
+	pla
+	plp
+	rts
+	.)
+
+#define	SIMPLE_DEVNO
+#ifdef SIMPLE_DEVNO
+
+	.(
+numdev	.byt 0		; number of USB devices currently known
+
+; reserves and returns new free device number 
+; must preserve yr
+; no more than 127 devices (without reuse!)
+&new_devno .(
+	lda numdev
+	inc numdev
+	clc
+	rts
+	.)
+
+&init_devno .(
+	lda #1
+	sta numdev	; first free device number
+	rts
+	.)
+
+; frees device number in AC
+; release only if the last one given
+&free_devno .(
+	clc
+	adc #1
+	cmp numdev
+	bne nolast
+	dec numdev
+nolast	rts
+	.)
+	.)
+#else /* SIMPLE_DEVNO */
+
+	.(
+devmap	.byt (MAX_DEV + 7) >> 3 
+
+&init_devno .(
+	.)
+
+&new_devno .(
+	.)
+
+&free_devno .(
+	.)
+	.)
+
+#endif /* SIMPLE_DEVNO */
+
+; returns empty device slot in y without reserving it!
+; must not store value in curslot
+; must preserve xr
+new_slot .(
+	ldy #0
+l	lda devnum,y
+	bmi ok
+	iny
+	cpy #MAX_DEV
+	bne l
+	lda #ERR_RESOURCE_DEVICE
+	sec
+	rts
+ok 	clc
+	rts
+	.)
+
+; we do not use usb_control, as FNADDR would be set to the
+; current FNADDR, which we actually just want to set in the device
+; so FNADDR in the control struct needs to stay zero.
+; speed is set here, endpoint is zero anyway and packet length
+; is irrelevant as we don't have a data stage
+dosetaddr .(
+	sta setaddr + HOST_CTRL_SETUP + 2
+	lda devspeed,y
+	sta setaddr + HOST_CTRL_SPEED
+	lda #<setaddr
+	ldy #>setaddr
+	jmp usb_host_control
+	.)
+
+; get some data. a/y contains pointer to HOST_CTRL structure,
+; FNADDR, ENDPOINT, SPEED, MAXPKLEN, BUFLEN, <buffer, >buffer.
+; x must have the slot number
+; FNADDR, ENDPOINT, SPEED, MAXPKLEN are set by usb_prepare_ctrl
+&usb_get .(
+	jsr usb_prepare_ctrl
+	jsr usb_host_get
+	jmp usb_deprep_ctrl
+	.)
+
+; Send a control msg, possibly receive some data (depends on control)
+; in: a/y contains pointer to HOST_CTRL structure,
+; FNADDR, ENDPOINT, SPEED, MAXPKLEN, BUFLEN, <buffer, >buffer.
+; x must have the slot number
+; FNADDR, ENDPOINT, SPEED, MAXPKLEN are set by usb_prepare_ctrl
+&usb_control .(
+	jsr usb_prepare_ctrl
+	jmp usb_host_control
+	.)
+
+
+	.)

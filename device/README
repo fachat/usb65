@@ -1,0 +1,127 @@
+
+6502 USB Device Driver
+======================
+(C) 2011 A.Fachat
+
+This is the USB Device driver for a 6502 CPU. It currently implements the following
+features:
+
+- keyboard driver for a using a Commodore PET as USB keyboard
+- in principle slow and full speed device support, but due to timing requirements a 1MHz 6502 
+  can only handle slow speed. 
+- Tested with a linux host only (SuSE 2.6.31.14-0.6-default kernel)
+- SL811(HS) hardware driver
+- hardware and logic driver separated, so other hardware can easily be integrated.
+
+Copyright
+---------
+
+The code is distributed under Lesser GNU Public License (LGPL) V3. Please see
+the lgpl.txt and gpl.txt files for more information.
+
+    This file is part of the 6502 USB Device Driver.
+
+    The 6502 USB Device Driver is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The 6502 USB Device Driver is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    Lesser GNU General Public License for more details.
+
+    You should have received a copy of the Lesser GNU General Public License
+    along with 6502 USB Device Driver. If not, see <http://www.gnu.org/licenses/>.
+
+
+Caveats
+-------
+USB is a completely host-controlled protocol. Devices need to obey strict timing 
+requirements. For example a setup packet must - by specification - never be NAK'd,
+but my Linux host directly sends a new setup packet after receiving an ACK for
+a previous send. The 1MHz 6502 only handles that with double-buffering (as supported
+by the SL811 for example) and completion polling for the last packet.
+
+
+Code Description
+----------------
+
+Unfortunately the code is not as "mature" as the USB Host Driver code, but still there is
+some separation of concern. There is the "usbd_*" calls that provide the user-space 
+USB interface. The interface description is in usbdev.a65. 
+
+As a first step you have to call "usbd_init", set the maximum packet lengths for each endpoint
+with usbd_set_maxlen, register the device and configuration descriptors with usbd_set_device_desc
+and usbd_set_conf_desc respectively, then register devices, e.g. with kbddev_register (which
+in turn calls usbd_register_device), then start the work with usbd_start.
+
+After that the code works in the interrupt routine, except if you call it directly. For example
+you would call kdbdev_send to send a key code to the host, which in turn calls usbd_set_channel_tx
+to send a packet.
+
+When a setup packet is received, the standard requests are found in rx_setup in usbdev.a65,
+and e.g. the device and config descriptors returned. If that is not found, the setup packet
+is given to each registered device in turn to see if it handles it.
+
+
+File Descriptions
+-----------------
+
+petusbkbd.a65
+	Main program. Commodore PET (BASIC) executable.
+	Initializes the driver, contains the PET binding
+usb.i65
+usbdev.a65
+usbdev.i65
+	USB device driver core
+debug.a65
+debug.i65
+	Some generic debug code
+msg.a65
+msg.i65
+	Messages to display
+kbddev.a65
+	The keyboard device driver
+README
+	This readme file
+sl811_dev.a65
+sl811_dev.i65
+	SL811HS device hardware driver
+
+
+Bugs still to fix:
+------------------
+
+- Documentation is sparse...
+
+- Quite some functionality is not implemented yet, especially some data transfer 
+  routines. Currently only interrupt input (for HID reports like the keyboard)
+  is implemented.
+
+- The reset callback is not sent out to user space, only handled internally. This is 
+  used at connect time, when the host resets the USB bus, so internal structures can be reset
+
+- The reverse mapping of PET keycodes to USB key codes is not completely correct. To minimize
+  effort I reused the table from the USB host driver, but some combinations don't seem to work
+  Anyway the PET does not have all the necessary keys for a PC keyboard
+
+- The separation between layers is not as good as I had hoped. The configuration descriptor
+  for example contains the length of the HID descriptor - to get that either a new call into
+  the keyboard code would be needed, or, as I have done, the HID descriptor is defined globally
+  as well. One could dynamically build the configuration descriptor at initialization time,
+  but that is inefficient as well
+
+
+Some comments on bugs fixed:
+
+- The Linux host I use sends new setup packets very quickly after receiving resp. 
+  sending an ACK for a previously sent resp. received packet on endpoint 0. 
+  As setup packets must never be NAK'd by specification, the 6502 needs to actually
+  use the double buffering in the SL811. Before the last packet is sent in endpoint 0 
+  buffer A, a receive for endpoint 0 buffer B is setup, such that after the send in A,
+  the receive in B is automatically started. Then the 6502 sends the packet in A and 
+  polls its completion, When it is completed, it sets up the receive in endpoint 0 
+  buffer A to receive the next setup packet. Only this way the 1MHz 6502 was able to
+  handle the timing, and for slow USB speeds only.
+

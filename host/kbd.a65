@@ -1,0 +1,363 @@
+/*
+    (C) 2011 Andre Fachat
+
+    This file is part of the 6502 USB Host Driver.
+
+    The 6502 USB Host Driver is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The 6502 USB Host Driver is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    Lesser GNU General Public License for more details.
+
+    You should have received a copy of the Lesser GNU General Public License
+    along with the 6502 USB Host Driver. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/*
+ * keyboard functionality driver
+ * single keyboard only!
+ */
+
+#define	DEBUG_KBD
+
+	.(
+
+	.data
+
+poll_data
+        .byt 0                  ; endpoint number
+        .byt 0                  ; transparent poll function data
+        .word 0                 ; max packet length from EP descriptor
+        .word kbd_poll_cb       ; hub poll callback function
+
+get_data .byt 0, 0, 0, HOST_FLAG_IGNORE_NAK
+        .word 0         ; max endpoint packet size per tx (from EP descriptor)
+        .word 8  	; data stage transfer size (possibly multiple tx)
+        .word kbdbuf
+
+send_led .byt 0, 0, 0, 0
+        .word 0         ; max endpoint packet size per tx (from EP descriptor)
+        .word 1  	; data stage transfer size (possibly multiple tx)
+        .word kbdbuf
+	.byt $21
+	.byt $09	; SET_REPORT
+	.byt 0, 2	; report type (2=output) and id (none=0)
+	.word 0		; interface
+	.word 1		; report length
+
+	.bss
+
+kbdbuf	.dsb 8, 0 
+
+; send the modifiers as LED state
+prevmod	.byt 0		; previous state of the modifiers
+kcslot	.byt 0		; temp
+
+; de-bounce
+#define	BOUNCE_CNT	2
+prevkey	.byt 0		; previous key value (translated)
+prevcnt	.byt 0		; how many times did we have this value?
+
+	.text
+
+; registers a keyboard interface
+; ptr must hold pointer to interface descriptor; ac has cslot
+; (endptr for usbgen_next_desc must hold end of descriptor set)
+&kbd_register_interface .(
+	sta poll_data + HOST_POLL_DATA
+	DENTER("KBD_REGISTER_IFC")
+	lda #0
+	sta prevkey
+	sta prevmod
+	ldy #DESC_IFC_NUM
+	lda (ptr),y
+	sta send_led + HOST_CTRL_SETUP + 4
+nextdesc
+	jsr usbgen_next_desc
+	bcs exit
+	cmp #DESC_TYPE_ENDPOINT
+	bne nextdesc
+
+	ldy #DESC_EP_ATTR
+	lda (ptr),y
+	cmp #3			; interrupt endpoint
+	bne nextdesc
+
+	dey
+	lda (ptr),y
+	and #$0f		; endpoint number
+
+	sta poll_data + HOST_POLL_ENDPOINT
+	
+	ldy #DESC_EP_MAX_PACKET_SIZE
+	lda (ptr),y
+	sta poll_data + HOST_POLL_MAXPKLEN
+	iny
+	lda (ptr),y
+	sta poll_data + HOST_POLL_MAXPKLEN+1
+
+	lda ptr
+	pha
+	lda ptr+1
+	pha
+
+	lda #<poll_data
+	ldy #>poll_data
+	jsr usb_register_poll_cb
+
+	pla
+	sta ptr+1
+	pla
+	sta ptr
+
+	bcs exit
+	lda #HOST_REGISTER_CTRL_USED	; do not close control slot
+
+exit	DEXIT("KBD_REGISTER_IFC")
+	rts
+	.)
+
+; in AC has transparent data from poll_data,
+; xr has slot number, if SEC yr has command
+; if CLC yr has control slot
+kbd_poll_cb .(
+	bcc std_poll
+	; kill poll by returning sec
+	rts
+std_poll
+	sta kcslot	; transparent data, set up to contain the control slot
+	; xr still has slot number for the interrupt endpoint
+	lda #<get_data
+	ldy #>get_data
+	jsr usb_get
+	bcs no_process
+	; got some data?
+	cmp #8
+	bcc no_process
+	; compute modifiers
+#ifdef DEBUG_KBD
+	lda #"K"
+	jsr printc
+	lda kbdbuf
+	jsr hexout
+#endif
+	lda kbdbuf
+	lsr
+	lsr
+	lsr
+	lsr
+	ora kbdbuf
+	and #$0f
+	
+	cmp prevmod
+	beq nomod
+	jsr send_mod
+nomod
+	tax
+	; only check first character in response (for simplicity)
+	lda kbdbuf+2
+	beq no_process
+	jsr translate
+	bcs no_data
+	cmp prevkey
+	bne no_bounce
+	ldy prevcnt		; same as previous key
+	beq debounced		; count already down to zero, then accept it (key repeat)
+	dec prevcnt		; no, just dec debounce counter
+	clc
+	rts
+no_bounce
+	ldy #BOUNCE_CNT		; debounce for next poll
+	sty prevcnt
+	sta prevkey
+debounced
+
+	; callback to main code when we got a key	
+	jsr usb_kbd_rx_key_cb
+	clc
+	rts
+no_data
+	lda prevcnt
+	beq clr
+	dec prevcnt
+	clc
+	DEXIT("KBD POLL Y")
+	rts
+clr
+	lda #0
+	sta prevkey
+	DDEBUG(ldy prevcnt)
+	DEXIT("KBD POLL X")
+no_process
+	clc
+	rts
+	.)
+
+; send the modifiers as report to the keyboard, to toggle the LEDs,
+; just for demonstration, as we don't currently handle NUMLOCK or CAPSLOCK yet
+send_mod .(
+	sta prevmod
+	sta kbdbuf	; report data
+	ldx kcslot
+#ifdef DEBUG_KBD
+	DMSG("SEND_MOD")
+#endif
+	lda #<send_led
+	ldy #>send_led
+	jsr usb_control
+	lda prevmod	; restore ac
+	rts	
+	.)
+
+; translate the keycode from the keyboard to the 
+; PETSCII code
+translate .(
+	DMSG("TRANSLATE")
+	ldy #<kbd_table
+	sty ptr
+	ldy #>kbd_table
+	sty ptr+1
+	ldy #0
+tloop	cmp (ptr),y
+	beq gotit
+	pha
+	lda #4
+	clc
+	adc ptr
+	sta ptr
+	bcc noc
+	inc ptr+1
+noc	lda (ptr),y
+	beq end		; end of table reached
+	pla
+	bne tloop
+end	pla
+no_key	sec
+	rts
+gotit	txa	; ctrl=1, shift=2, alt=4
+	beq no_mod
+	lsr
+	bcs ctrl
+	lsr
+	bcc no_mod
+	ldy #2	; shift
+	.byt $2c
+ctrl	ldy #3	; ctrl
+	.byt $2c
+no_mod	ldy #1
+	lda (ptr),y
+	beq no_key
+	clc
+	rts
+	.)
+
+; table with key translations. Each row has a key, the columns are the
+; different modifiers. First column is original keyboard value, second 
+; is without modifier, third with shift, fourth col is with ctrl
+;
+kbd_table
+	.byt $04, 65, 65+128, 1		; a
+	.byt $05, 66, 66+128, 2		; b
+	.byt $06, 67, 67+128, 3		; c
+	.byt $07, 68, 68+128, 4		; d
+	.byt $08, 69, 69+128, 5		; e
+	.byt $09, 70, 70+128, 6		; f
+	.byt $0a, 71, 71+128, 7		; g
+	.byt $0b, 72, 72+128, 8		; h
+	.byt $0c, 73, 73+128, 9		; i
+	.byt $0d, 74, 74+128, 10	; j
+	.byt $0e, 75, 75+128, 11	; k
+	.byt $0f, 76, 76+128, 12	; l
+	.byt $10, 77, 77+128, 13	; m
+	.byt $11, 78, 78+128, 14	; n
+	.byt $12, 79, 79+128, 15	; o
+	.byt $13, 80, 80+128, 16	; p
+	.byt $14, 81, 81+128, 17	; q
+	.byt $15, 82, 82+128, 18	; r
+	.byt $16, 83, 83+128, 19	; s
+	.byt $17, 84, 84+128, 20	; t
+	.byt $18, 85, 85+128, 21	; u
+	.byt $19, 86, 86+128, 22	; v
+	.byt $1a, 87, 87+128, 23	; w
+	.byt $1b, 88, 88+128, 24	; x
+	.byt $1c, 89, 89+128, 25	; y (US) z (DE)
+	.byt $1d, 90, 90+128, 26	; z (US) y (US)
+	.byt $1e, "1", "!", 0		; 2
+	.byt $1f, "2", "@", 0		; 3
+	.byt $20, "3", "#", 0		; 4
+	.byt $21, "4", "$", 0		; 5
+	.byt $22, "5", "%", 0		; 6
+	.byt $23, "6", "^^", 0		; 7 (note: ^ is an escape char in xa65)
+	.byt $24, "7", "&", 0		; 8
+	.byt $25, "8", "*", 0		; 9
+	.byt $26, "9", "(", 0		; 0
+	.byt $27, "0", ")", 0		; 1 (top row)
+	.byt $28, 13, 13, 13		; CR
+	.byt $29, $1b, $1b, $1b		; ESC
+	.byt $2a, $14, $94, 0	;8, 8, 8		; backspace
+	.byt $2b, 9, 9, 9		; TAB
+	.byt $2c, $20, $20, $20		; SPACE
+	.byt $2d, "-", "_", 0		; - (US) ß (DE)
+	.byt $2e, "=", "+", 0		; = (US) ' (DE)
+	.byt $2f, "[", $7b, 0		; [ (US) ü (DE)
+	.byt $30, "]", $7d, 0		; ] (US) + (DE)
+
+	.byt $32, "\", $7c, 0		; \ (US) # (DE)
+	.byt $33, ";", ":", 0		; ; (US) ö (DE)
+	.byt $34, "'", 34, 0		; ' (US) ä (DE)
+	.byt $35, "`", "^^", 0		; ` (US) ^ (DE) (Note: ^ is escape character in xa65)
+	.byt $36, ",", "<", 0		; ,
+	.byt $37, ".", ">", 0		; .
+	.byt $38, "/", "?", 0		; / (US) - (DE)
+;	.byt $39	; CAPS LOCK
+;	.byt $3a	; F1
+;	.byt $3b	; F2
+;	.byt $3c	; F3
+;	.byt $3d	; F4
+;	.byt $3e	; F5
+;	.byt $3f	; F6
+;	.byt $40	; F7
+;	.byt $41	; F8
+;	.byt $42	; F9
+;	.byt $43	; F10
+;	.byt $44	; F11
+;	.byt $45	; F12
+;	.byt $46	; PRT
+;	.byt $47	; SCRLCK
+;	.byt $48	; PAUSE
+	.byt $49, $94, $94, 0		; INS
+	.byt $4a, $13, $93, 0		; POS1
+;	.byt $4b	; PGUP
+	.byt $4c, $14, $94, 0		; DEL
+;	.byt $4d	; END
+;	.byt $4e	; PGDN
+	.byt $4f, $1d, $9d, 0		; CRSR RIGHT
+	.byt $50, $9d, $9d, 0		; CRSR LEFT
+	.byt $51, $11, $91, 0		; CRSR DOWN
+	.byt $52, $91, $91, 0		; CRSR UP
+;	.byt $53	; NUM LOCK
+	.byt $54, "/", 0, 0		; / (KEYPAD)
+	.byt $55, "*", 0, 0		; * (KEYPAD)
+	.byt $56, "-", 0, 0		; - (KEYPAD)
+	.byt $57, "+", 0, 0		; + (KEYPAD)
+	.byt $58, 13, 0, 0		; ENTER (KEYPAD)
+	.byt $59, "1", 0, 0		; 1 (KEYPAD)
+	.byt $5a, "2", 0, 0		; 2 (KEYPAD)
+	.byt $5b, "3", 0, 0		; 3 (KEYPAD)
+	.byt $5c, "4", 0, 0		; 4 (KEYPAD)
+	.byt $5d, "5", 0, 0		; 5 (KEYPAD)
+	.byt $5e, "6", 0, 0 		; 6 (KEYPAD)
+	.byt $5f, "7", 0, 0		; 7 (KEYPAD)
+	.byt $60, "8", 0, 0		; 8 (KEYPAD)
+	.byt $61, "9", 0, 0		; 9 (KEYPAD)
+	.byt $62, "0", 0, 0		; 0 (KEYPAD)
+	.byt $63, ".", 0, 0		; . (US) , (DE) (KEYPAD)
+;	.byt $64	; ??? (US) < (DE)
+	.byt 0				; end of table
+ 
+	.)
+

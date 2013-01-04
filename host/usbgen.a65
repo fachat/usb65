@@ -1,0 +1,138 @@
+/*
+    (C) 2011 Andre Fachat
+
+    This file is part of the 6502 USB Host Driver.
+
+    The 6502 USB Host Driver is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The 6502 USB Host Driver is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    Lesser GNU General Public License for more details.
+
+    You should have received a copy of the Lesser GNU General Public License
+    along with the 6502 USB Host Driver. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/*
+ * generic USB functionality
+ */
+
+	.data
+
+; pointer to the end of the config descriptor, set
+; when reading the config, checked when getting next descriptor
+endptr	.word 0
+
+	.text
+
+; gets first configuration into buffer pointed to by ptr,
+; sets first configuration
+; 
+; ac contains control slot number
+&usbgen_getset_conf .(
+	pha			; control slot
+        ldy #1
+        jsr usb_getconf
+        bcc gotconf
+	tay
+	pla
+	tya
+        rts
+gotconf
+	DMSG("GOT CONF")
+	; ac has buffer len
+	stx ptr
+	sty ptr+1
+#ifdef DEBUG
+        jsr print_hex_buffer
+	lda #13
+	jsr printc
+	lda ptr+1
+	jsr hexout
+	lda ptr
+	jsr hexout
+	lda #" "
+	jsr printc
+#endif
+        ldy #DESC_CFG_TYPE
+        lda (ptr),y
+        cmp #DESC_TYPE_CONFIG
+        bne uk2
+        ; now ptr is config descriptor
+
+	; set end pointer, so we know in _next_conf when we are done
+	ldy #DESC_CFG_TOTAL_BYTES
+	lda (ptr),y
+	clc
+	adc ptr
+	sta endptr
+#ifdef DEBUG
+	php
+	jsr hexout
+	plp
+#endif
+	iny
+	lda (ptr),y
+	adc ptr+1
+	sta endptr+1
+#ifdef DEBUG
+	jsr hexout
+	lda #13
+	jsr printc
+#endif
+
+	pla
+	tax			; control slot for usb_setconf below
+
+        lda ptr
+        pha
+        lda ptr+1
+        pha
+
+        ldy #DESC_CFG_THIS_CONF
+        lda (ptr),y
+        jsr usb_setconf         ; set this config in the hub
+
+        pla			; restore ptr (destroyed by usb_setconf)
+        sta ptr+1
+        pla
+        sta ptr
+	
+	tya
+	rts			; carry flag from usb_setconf
+uk2	
+	pla			; pull the control slot
+	lda #ERR_DEVICE		; TODO
+	sec
+	rts
+	.)
+
+; takes the ptr pointer as pointer to a config descriptor, and finds the 
+; _next_ descriptor of the type given in xr
+&usbgen_next_desc .( 
+	ldy #DESC_DEV_LEN
+	lda (ptr),y
+	clc
+	adc ptr
+	sta ptr
+	bcc c1
+	inc ptr+1
+c1	; here ptr points to the next descriptor
+	; check with endptr if we're done
+	lda ptr+1
+	cmp endptr+1
+	bcc ok
+	bne nok
+	lda ptr
+	cmp endptr
+	bcs nok
+ok
+	ldy #DESC_DEV_TYPE
+	lda (ptr),y
+nok	rts
+	.)
+

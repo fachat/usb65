@@ -1,0 +1,121 @@
+/*
+    (C) 2011 Andre Fachat
+
+    This file is part of the 6502 USB Host Driver.
+
+    The 6502 USB Host Driver is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The 6502 USB Host Driver is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    Lesser GNU General Public License for more details.
+
+    You should have received a copy of the Lesser GNU General Public License
+    along with the 6502 USB Host Driver. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/*
+ * keyboard functionality driver
+ */
+
+	.(
+	.data
+
+poll_data
+        .byt 0                  ; endpoint number
+        .byt 0                  ; transparent poll function data
+        .word 0                 ; max packet length from EP descriptor
+        .word mouse_poll_cb       ; hub poll callback function
+
+get_data .byt 0, 0, 0, HOST_FLAG_IGNORE_NAK
+        .word 0         ; max endpoint packet size per tx (from EP descriptor)
+        .word 8  ; data stage transfer size (possibly multiple tx)
+        .word kbdbuf
+
+	.bss
+
+kbdbuf	.dsb 8, 0 
+
+	.text
+
+; registers a mouse interface
+; ptr must hold pointer to interface descriptor
+; (endptr for usbgen_next_desc must hold end of descriptor set)
+&mouse_register_interface .(
+	DENTER("MOUSE_REGISTER_IFC")
+nextdesc
+	jsr usbgen_next_desc
+	bcs exit
+	cmp #DESC_TYPE_ENDPOINT
+	bne nextdesc
+
+	ldy #DESC_EP_ATTR
+	lda (ptr),y
+	cmp #3			; interrupt endpoint
+	bne nextdesc
+
+	dey
+	lda (ptr),y
+	and #$0f		; endpoint number
+
+	sta poll_data + HOST_POLL_ENDPOINT
+	
+	ldy #DESC_EP_MAX_PACKET_SIZE
+	lda (ptr),y
+	sta poll_data + HOST_POLL_MAXPKLEN
+	iny
+	lda (ptr),y
+	sta poll_data + HOST_POLL_MAXPKLEN+1
+
+	lda ptr
+	pha
+	lda ptr+1
+	pha
+
+	lda #<poll_data
+	ldy #>poll_data
+	jsr usb_register_poll_cb
+
+	pla
+	sta ptr+1
+	pla
+	sta ptr
+
+	bcs exit
+	lda #HOST_REGISTER_OK
+
+exit	DEXIT("MOUSE_REGISTER_IFC")
+	rts
+	.)
+
+; in AC has transparent data from poll_data,
+; xr has slot number, if SEC yr has command
+mouse_poll_cb .(
+	bcc std_poll
+	; kill poll by returning sec
+	rts
+std_poll
+	; xr still has the slot number for the interrupt endpoint
+	lda #<get_data
+	ldy #>get_data
+	jsr usb_get
+	bcs no_process
+	; got some data?
+	cmp #3		; buttons, x-displacement, y-displacement
+	bcc no_process
+
+	lda kbdbuf	; buttons
+	ldx kbdbuf+1	; x-displ.
+	ldy kbdbuf+2	; y-displ.
+	; callback to main code when we got mouse data
+	jsr usb_mouse_rx_cb
+no_process
+	clc
+	rts
+	.)
+
+	.)
+

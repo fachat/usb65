@@ -1,0 +1,828 @@
+/*
+    (C) 2011 Andre Fachat
+    
+    This file is part of the 6502 USB Device Driver.
+
+    The 6502 USB Device Driver is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The 6502 USB Device Driver is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    Lesser GNU General Public License for more details.
+
+    You should have received a copy of the Lesser GNU General Public License
+    along with the 6502 USB Device Driver. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/*
+ * MAX3420E peripheral device driver
+ *
+ * The MAX3420E has EP1 as OUT endpoint, while EP2 and EP3 are IN endpoints only
+ *
+ * Note that the wreg() etc macros already contain the SPI enable/disable frame
+ *
+ * OUT requests are not handled (yet), only IN
+ *
+ */
+
+#include "spi65b.i65"
+
+MAX3420E_EnMask = 0x08
+
+#include "max3420e.i65"
+#include "usbdev.i65"
+
+#define	DEBUG
+
+/*
+ * General principles of operation
+ *
+ * 
+ * interface description
+ *
+ * max3420e_init
+ *      checks presence of hardware;
+ *      return clc when ok, sec when not found
+ *      In AC speed; 0=low, 1=full speed
+ *      Out - returns the maximum number of 
+ *      endpoints supported by driver/hardware in ac
+ * max3420e_set_maxlen
+ *      in xr=endpoint, ac=maximum transaction buffer length
+ *      must be called before max3420e_start
+ * max3420e_start
+ *      when this method is called, the driver enables
+ *      the interrupt generation, so that the interrupt
+ *      routine must then call the follwing interrupt callback
+ * max3420e_reset
+ *      this is called when a USB reset is received
+ *      (which is automatically detected by max3420e_int)
+ * max3420e_int
+ *      interrupt callback; calls into the driver from the
+ *      actual interrupt routine; handles the sl811 interrupt
+ *      that has been set up with max3420e_start
+ *      calls back into the callbacks defined in the channel
+ *      control blocks when a USB transaction has completed.
+ *      Those callback routines then call into the
+ *      following routines:
+ *
+ *      max3420e_set_addr
+ *              in ac=USB device address, called to set the device
+ *              address after a set-address call from the host
+ *      max3420e_send_ack
+ *              in xr=endpt, a/y=callback address when ack is sent
+ *      max3420e_send_stall
+ *              in xr=endpt, a/y=callback address when stall is sent
+ *      max3420e_recv_ack
+ *              in xr=endpt, a/y=callback when ack is received
+ *              Note in the current version this is called without
+ *              actually waiting for the ACK, as the callback sets up
+ *              the receive for the next setup and timing is tight
+ *      max3420e_set_rx
+ *              Set an endpoint receive buffer, a/y is the channel control
+ *              block, x is the endpoint number
+ *              Note an endpoint can at any time be either rx or tx, not both
+ *      max3420e_set_tx
+ *              Set an endpoint transmit buffer, a/y is the channel control
+ *              block, x is the endpoint number
+ *              Note an endpoint can at any time be either rx or tx, not both
+ *
+ * max3420e_is_active
+ *      checks if an endpoint is still active
+ *      in: x=endpoint
+ *      out: CLC if not active, SEC if active
+ */
+
+#define MAX_ENDPOINTS   4       /* code limit is < 128 */
+#define MAX_BUFLEN      64      /* 64 byte FIFOs */
+
+#include "spi65b.a65"
+
+	.(
+
+
+	;------------------------------------
+	; globals
+
+	.zero
+
+ctrlptr	.word 0
+setptr	.word 0
+
+	.bss
+
+currep	.byt 0
+cnt	.byt 0
+
+itest1  .byt 0
+itest2  .byt 0
+
+txmax   .dsb MAX_ENDPOINTS, 0   ; max transfer length per endpoint
+txlen   .dsb MAX_ENDPOINTS, 0   ; endpoint buffer length, set per transaction
+txflg   .dsb MAX_ENDPOINTS, 0   ; endpoint flags: $80 = fixed length
+
+endpst  .dsb MAX_ENDPOINTS, 0   ; endpoints status. 0=not used
+bufaddrl .dsb MAX_ENDPOINTS, 0  ; buffer address (low, high)
+bufaddrh .dsb MAX_ENDPOINTS, 0
+buflenl .dsb MAX_ENDPOINTS, 0   ; buffer length (low, high)
+buflenh .dsb MAX_ENDPOINTS, 0
+cbackl  .dsb MAX_ENDPOINTS, 0   ; callback address (low, high)
+cbackh  .dsb MAX_ENDPOINTS, 0
+cbacktd .dsb MAX_ENDPOINTS, 0   ; transient data for callback (given in y)
+
+	.text
+
+	;------------------------------------
+	; HW stuff
+
+max3420e_hwinit .(
+
+	; SPI = full duplex, INTLEVEL = negative level
+	; should set GPX if used, is not used here
+	wreg(rPINCTL, bmFDUPSPI+bmINTLEVEL)
+
+	jsr max3420e_hwreset
+
+	rts
+	.)
+
+max3420e_hwreset .(
+	
+	; chip reset
+  	wreg(rUSBCTL, 0x20);	
+	; remove the reset
+  	wreg(rUSBCTL, 0x0);	
+
+l1	; read irq status
+	rreg(rUSBIRQ);		
+	and #bmOSCOKIRQ		; chip reset stops oscillator, wait for it to stabilize
+	beq l1
+
+	; from sample code:
+	; This is a self-powered design, so the host could turn off Vbus while we are powered.
+	; Therefore set the VBGATE bit to have the MAX3420E automatically disconnect the D+
+	; pullup resistor in the absense of Vbus. Note: the VBCOMP pin must be connected to Vbus
+	; or pulled high for this code to work--a low on VBCOMP will prevent USB connection.
+	; VBGATE=1 disconnects D+ pullup if host turns off VBUS
+	wreg(rUSBCTL,(bmCONNECT+bmVBGATE)); 
+
+	rts
+	.)
+
+	.(
+&max3420e_enableints
+	// ENABLE INTERRUPT
+
+	//wreg(rEPIEN,(bmSUDAVIE+bmIN3BAVIE+bmIN0BAVIE+bmIN2BAVIE)); 
+	wreg(rEPIEN,(bmSUDAVIE+bmIN3BAVIE+bmIN0BAVIE)); 
+	wreg(rUSBIEN,(bmURESIE+bmURESDNIE));
+
+	wreg(rCPUCTL,bmIE);                 // Enable the INT pin
+
+	rts
+	.)
+
+	; xr = register to write to, ac = value
+wreg_x	.(
+	pha
+        max3420e_enable()       
+	txa		
+        ora #0x02 
+        spi_wra() 
+	pla
+        spi_wra()
+        max3420e_disable()
+	rts
+	.)
+
+	; xr = register to read
+rreg_x	.(
+        max3420e_enable()
+	txa
+        spi_wra()           
+        spi_wra()      
+        pha         
+        max3420e_disable() 
+        pla
+	rts
+	.)
+
+        ; reads a number of bytes into the buffer pointed to by
+	; ptr1, with x given the FIFO register to read
+        ; from and a the number of bytes to count
+readbytes .(
+	sta cnt
+	max3420e_enable()
+	; prime the register number
+	; read, so no OR with $02
+	txa
+	spi_wra()
+	; read cnt byte
+	ldy #0
+next	spi_wra()
+	sta (ctrlptr),y
+	iny
+	dec cnt
+	bne next
+	max3420e_disable()
+	rts
+        .)
+
+        ; write a number of bytes from the buffer pointed to by
+	; ptr1, with y given the FIFO register to write to
+        ; and txlen containing the number of bytes to count
+writebytes .(
+#ifdef DEBUG
+	lda #"S"
+	jsr printc
+	;lda writefifo,x
+	;jsr hexout
+#endif
+	max3420e_enable()
+	; prime the register number
+	; read, so no OR with $02
+	lda writefifo,x
+	ora #$02		; set write bit
+	spi_wra()
+	; send txlen byte
+	ldy #0
+next	lda (ctrlptr),y
+	spi_wraNR()
+#if 0 //def DEBUG
+	jsr hexout
+#endif
+	iny
+	cpy txlen
+	bne next
+#if 0 //def DEBUG
+	lda #"Y"
+	jsr printc
+	tya
+	jsr hexout
+#endif
+	max3420e_disable()
+	rts
+
+&armsend
+#if 0
+	lda txlen,x
+	DMSG("ARM")
+#endif
+	;lda txlen,x
+	;wracAS(rEP0BC)
+	;rts
+
+	php
+	max3420e_enable()
+#ifdef DEBUG
+	lda #"M"
+	jsr printc
+	txa
+	jsr hexout
+	lda writearm,x
+	jsr hexout
+	lda txlen,x
+	jsr hexout
+	pla
+	pha
+	jsr hexout
+#endif
+	lda writearm,x
+	ora #$02		; write bit
+	plp
+	bcc noack
+	ora #$01		; ackstat
+noack	spi_wra()
+	lda txlen,x
+	spi_wra()
+	max3420e_disable()
+	rts
+
+	.data
+writefifo
+	.byt rEP0FIFO, 0, rEP2INFIFO, rEP3INFIFO
+writearm
+	.byt rEP0BC, 0, rEP2INBC, rEP3INBC
+&inirqbits
+	.byt bmIN0BAVIRQ, 0, 0 /*bmIN2BAVIRQ*/, bmIN3BAVIRQ
+&stalls
+	.byt bmSTLSTAT+bmSTLEP0OUT+bmSTLEP0IN, bmSTLEP1OUT, bmSTLEP2IN, bmSTLEP3IN
+	.text
+        .)
+
+stall_ep .(
+	lda stalls,x
+	wrac(rEPSTALLS)
+	rts
+	.)
+
+ack_ep 	.(
+	DMSG("ACK")
+        rregAS(rFNADDR)         ; dummy read to set ACKSTAT
+	rts
+	.)
+
+; ----------------------------------------------------------------
+; interface code
+
+&max3420e_init .(
+
+	; can't really detect HW for now
+
+        jsr spi_init
+
+        jsr max3420e_hwinit
+
+        jsr max3420e_hwreset
+
+	lda #MAX_ENDPOINTS		; number of supported endpoints
+	clc		; ok
+	rts
+	.)
+
+; TODO fix for >256 byte
+; in xr=endpoint, ac=maximum transaction buffer length
+&max3420e_set_maxlen .(
+        cpx #MAX_ENDPOINTS
+        bcs end
+        cmp #MAX_BUFLEN+1	; max $40 bytes 
+        bcs end
+        sta txmax,x
+end     rts
+	.)
+
+
+; when this method is called, the driver enables
+; the interrupt generation, so that the interrupt
+; routine must then call the follwing interrupt callback
+&max3420e_start .(
+        ldx #0
+
+	jsr max3420e_enableints
+
+        clc
+        rts
+        .)
+
+&max3420e_reset .(
+	jsr max3420e_enableints
+
+        lda #0          ; initial device address
+
+        ldx #MAX_ENDPOINTS-1
+l1      sta endpst,x
+        dex
+        bpl l1
+        clc
+        rts
+	.)
+
+; sl811d_int
+;      interrupt callback; calls into the driver from the
+;      actual interrupt routine; handles the sl811 interrupt
+;      that has been set up with sl811d_start
+;      calls back into the callbacks defined in the channel
+;      control blocks when a USB transaction has completed.
+&max3420e_int .(
+        ; check the EPIRQ bits
+        rreg(rEPIRQ)
+        sta itest1
+inc $8000+79
+        ; check the USBIRQ bits
+        rreg(rUSBIRQ)
+        ; did we receive a reset request?
+        .(
+        and #bmURESDNIRQ
+        beq nobit
+        wrac(rUSBIRQ)           ; clear the irq bit
+
+	jmp usbd_cb_reset	; callback - nothing else on reset
+nobit   .)
+
+        ; SUDAV IRQ
+        .(
+        lda itest1
+        and #bmSUDAVIRQ
+        beq nobit
+        ; clear the SUDAV IRQ
+        wrac(rEPIRQ)
+#if 0 //def DEBUG
+lda ctrlptr
+ldy ctrlptr+1
+DMSG("$")
+#endif
+        jsr do_setup
+
+	; update stored interrupt flag
+	rreg(rEPIRQ)
+	sta itest1
+nobit   .)
+
+        ; was an EPx-IN packet just dispatched to the host?
+	; note: only EP2 and EP3 are IN endpoints, EP0 is ctrl, EP1 is OUT
+        .(
+	ldx #0
+l0	stx currep
+	lda inirqbits,x
+	and itest1
+	beq next
+	; clear IN IRQ
+	wrac(rEPIRQ)
+#if 0 //def DEBUG
+lda #">":jsr printc
+lda itest1: jsr hexout
+#endif
+        jsr do_in
+next	ldx currep
+	inx
+	cpx #4
+	bcc l0
+nobit   .)
+
+	; did we receive an OUT request	(i.e. buffer has been received?
+	; TODO implement OUT
+	.(
+	.)
+
+        rts
+
+do_setup .(
+	ldx #0			; always endpoint 0
+
+	lda endpst,x
+	DMSG("SETUP")
+
+	lda endpst,x
+	cmp #$c0
+	beq doit
+	jsr error		; do an error callback on prev. operation
+	ldx #0
+doit
+	jsr set_ptr
+
+        lda #8			; number of bytes
+        ldx #rSUDFIFO		; which FIFO to read
+        ; read request
+        jsr readbytes
+
+	; let it be analyzed
+	ldx #0			; endpoint#
+	jsr setupcb
+	
+        rts 
+	.)
+
+; interrupt routine for transmitting data
+do_in	.(
+#if 0 //def DEBUG
+	lda #"T"
+	jsr printc
+	txa
+	jsr hexout
+        lda endpst,x
+	jsr hexout
+	lda txlen,x
+	jsr hexout
+#endif
+        lda endpst,x
+        bpl stray               ; not active, stray interrupt
+	; max3420 takes care of re-transmit, so we have succeeded 
+	; and can go on with the next part
+	lda txlen,x
+	cmp txmax,x
+	bne waslast
+
+	; update buffer pointer with txlen
+	jsr step
+
+	php
+	jmp setuptx
+	
+stray	rts
+
+waslast	lda endpst,x
+	cmp #$80
+	bne stray
+	lda #0
+	sta endpst,x
+
+	; send ack
+	;jsr ack_ep
+
+	php
+	jmp setuptx2
+	rts
+	.)
+
+	.)
+
+; callback into caller, with CLC
+setupcb 
+        lda #$80
+        .byt $2c
+done   lda #0
+        clc
+        bcc call
+
+; callback into caller, with SEC
+error   tay
+        lda #ERR_DEVICE
+        sec
+call
+        pha
+        lda #0                  ; clear status
+        sta endpst,x
+
+        lda cbackl,x            ; set the ctrlptr as callback address for indirect jump
+        sta ctrlptr
+        lda cbackh,x
+        sta ctrlptr+1
+        ora ctrlptr
+        beq no_callback
+#if 0
+lda ctrlptr
+ldy ctrlptr+1
+        DMSG("CALL")
+#endif
+        pla
+        ldy cbacktd,x
+        ; SEC, x=endpoint, y=hw error, ac=error code
+        ; CLC, x=endpoint, ac=cmd (0=done, $80=setup)
+&ijmp   jmp (ctrlptr)
+no_callback
+        pla
+        rts
+
+; in xr=endpoint, sets ctrlptr from bufaddr
+set_ptr .(
+        lda bufaddrl,x
+        sta ctrlptr
+        lda bufaddrh,x
+        sta ctrlptr+1
+        rts
+        .)
+
+&max3420e_send_stall .(
+        DMSG("SEND STALL")
+        cpx #MAX_ENDPOINTS
+        bcs err
+        php
+        sei
+	jsr setstallack
+	jsr stall_ep
+        lda #$80		; send
+        sta endpst,x
+	jmp setuptx2
+err     rts
+	.)
+
+&max3420e_send_ack .(
+        DMSG("SEND ACK")
+        cpx #MAX_ENDPOINTS
+        bcs err
+        php
+        sei
+	jsr setstallack
+	jsr ack_ep
+        lda #$80		; send
+        sta endpst,x
+	jmp setuptx2
+err     rts
+        .)
+
+&max3420e_recv_ack .(
+        ; don't care, we handle that with automatic 
+        ; receive (note: we should handle the return value
+        ; of the auto rx EPB interrupt appropriately though!)
+        php
+        sei
+        sta ctrlptr
+        sty ctrlptr+1
+        jsr ijmp
+        plp
+        rts
+        .)
+
+setstallack .(
+        sta cbackl,x
+        tya
+        sta cbackh,x
+        lda #0
+        sta buflenl,x
+        sta buflenh,x
+        sta txlen,x
+        rts
+        .)
+
+&max3420e_set_rx .(
+	DMSG("SET_RX")
+        php     ; save against interrupt routine
+        sei
+
+        jsr set_rxtx
+        bcs end
+
+        lda #$c0
+        sta endpst,x            ; status is active ($80), and rx ($40)
+
+	plp
+	clc
+	rts
+
+&end    /*DMSG("SET_RX_END")*/
+        plp
+        sec
+        rts
+        .)
+
+&max3420e_set_tx .(
+	/*DMSG("SET_TX")*/
+        php     ; save against interrupt routine
+        sei
+
+        jsr set_rxtx
+        bcs end
+
+        stx currep
+
+        lda #$80
+        sta endpst,x            ; status is active ($80), and tx (not $40)
+
+&setuptx
+        ; set ctrlptr from buffaddr
+        jsr set_ptr
+
+        ; calculate transaction length, set into txlen
+        jsr set_txlen
+
+#if 0 //def DEBUG
+        lda #"K"
+        jsr printc
+        lda txmax,x
+        jsr hexout
+        lda txlen,x
+        jsr hexout
+#endif
+
+        ; copy data to max3420e; in x=endpoint, txlen=length, ctrlptr=buffer pointer
+	; and arm it
+        jsr writebytes
+
+	;jsr armsend
+
+#if 0 //def DEBUG
+        lda txmax,x
+	ldy txlen,x
+#endif
+	//DMSG("SETUPTX")
+	; only if nothing left
+        lda txmax,x
+        cmp txlen,x
+        beq notlast     ; packet is max size, then not last packet
+        ;lastpacket to send, poll for completion
+
+	sec
+	jsr armsend
+	plp
+	rts
+
+&setuptx2
+        lda currep
+        pha
+        jsr done        ; do the callback (which sets up the initctrl setup packet rx)
+        pla
+        sta currep
+        tax
+	plp
+	rts
+
+notlast clc
+	jsr armsend
+	
+	plp
+        clc
+        rts
+        .)
+
+; copy data from control block to 
+; internal data structures
+set_rxtx .(
+        cpx #MAX_ENDPOINTS
+        bcs err_endp
+        sta setptr
+        sty setptr+1
+#ifdef DEBUG
+	lda #"P"
+	jsr printc
+#endif
+        ldy #USBD_CHAN_BUF      ; copy over the buffer address
+        lda (setptr),y
+        sta bufaddrl,x
+#ifdef DEBUG
+	jsr hexout
+#endif
+        iny
+        lda (setptr),y
+        sta bufaddrh,x
+#ifdef DEBUG
+	jsr hexout
+#endif
+        iny                     ; USBD_CHAN_LEN
+        lda (setptr),y         ; copy over the buffer length
+        sta buflenl,x
+        iny
+        lda (setptr),y
+        sta buflenh,x
+        iny                     ; USBD_CHAN_DONE_CB
+        lda (setptr),y         ; copy over the callback address
+        sta cbackl,x
+        iny
+        lda (setptr),y
+        sta cbackh,x
+        iny                     ; USBD_CHAN_FLAGS
+        lda (setptr),y
+        sta txflg,x
+;#if USBD_FLAGS_TOGGLE = $80
+;#if EPCTL_SEQ = $40
+;        and #USBD_FLAGS_TOGGLE
+;        lsr
+;        sta txtog,x             ; because sequence bit is $40
+        clc
+;#else
+;#error assumption not held
+;#endif
+;#else
+;#error assumption not held
+;#endif
+        iny                     ; USBD_CHAN_PARAM
+        lda (setptr),y
+        sta cbacktd,x
+        rts
+err_endp
+        lda #ERR_ENDPOINT_NO
+        rts
+        .)
+
+; in xr=endpoint
+; sets transaction length into txlen
+set_txlen .(
+        lda txmax,x
+        sta txlen,x
+        ldy buflenh,x   ; more than 256 byte left, 
+        bne doit        ; then max tx len
+        cmp buflenl,x   ; less then 256 byte, then compare with max tx len
+        bcc doit        ; larger, then use max tx len
+        lda buflenl,x   ; otherwise use bytes left
+        sta txlen,x
+doit
+#ifdef DEBUG
+        lda #"L"
+        jsr printc
+        lda txlen,x
+        jsr hexout
+#endif
+        rts
+        .)
+
+
+; determine if the endpoint given is still active
+&max3420e_is_active .(
+        lda endpst,x            ; bit 7 is set when active
+        asl                     ; move into carry
+        rts
+        .)
+
+&max3420e_set_addr .(
+        ; ack's setting of address (transaparently handled by the max3420e)
+        ;rregAS(rFNADDR)
+        clc
+        rts
+        .)
+
+; in a=length of transaction, x=endpoint, steps the
+; bufaddr and buflen values up resp. down
+step    .(
+        /*DMSG("STEP")*/
+        tay
+        clc
+        adc bufaddrl,x
+        sta bufaddrl,x
+        lda #0
+        adc bufaddrh,x
+        sta bufaddrh,x
+
+        tya
+        eor #$ff        ; substract stored length from buffer len
+        sec             ; adding the inverse
+        adc buflenl,x
+        sta buflenl,x
+        lda #$ff
+        adc buflenh,x
+        sta buflenh,x
+        ora buflenl,x   ; sets zero bit if final length is zero
+        rts             ; has carry clear on underflow (i.e. txlen larger than actual data len)
+        .)
+
+	.)

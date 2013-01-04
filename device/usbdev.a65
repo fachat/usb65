@@ -1,0 +1,408 @@
+/*
+    (C) 2011 Andre Fachat
+
+    This file is part of the 6502 USB Device Driver.
+
+    The 6502 USB Device Driver is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The 6502 USB Device Driver is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    Lesser GNU General Public License for more details.
+
+    You should have received a copy of the Lesser GNU General Public License
+    along with the 6502 USB Device Driver. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+#include "usb.i65"
+
+/*
+ * This is the main USB device driver. It provides a common layer
+ * around the device-specific code
+ *
+ * usbd_init
+ *	initializes the driver
+ *	initializes the hardware
+ *	in: a=speed (0=low, 1=high, ...)
+ *	out: a=max number of endpoints supported
+ * usbd_register_device
+ *	registers a device callback that is called when a setup
+ *	packet arrives that cannot be handled here.
+ *	in a/y callback address. when the callback is called,
+ *	it gets the address of the setup packet (8byte) in a/y
+ * usbd_set_maxlen
+ *	sets the maximum packet length for an endpoint
+ *	in x=endpoint, a=packet length. e.g. endpoint 0 is always 8
+ * usbd_set_device_desc
+ *      in a/y address of the device descriptor. (length is
+ *      $12 by USB spec. Either saves the address for later use,
+ *      or copies the data into the sl811 buffer memory
+ * usbd_set_conf_desc
+ *      in a/y address of the device descriptor. (length is
+ *      in XR). Either saves the address for later use,
+ *      or copies the data into the sl811 buffer memory
+ * usbd_start
+ *      when this method is called, the driver enables
+ *      the interrupt generation, so that the interrupt
+ *      routine must then call the follwing interrupt callback
+ * usbd_int
+ *      interrupt callback
+ *	From the interrupt callback, i.e. in interrupt context,
+ *	the callback usbd_cb_setup is called, with ... TODO
+ *
+ * usbd_cb_reset
+ *	this routine is called when the USB host has sent 
+ *	a USB reset. Called from the interrupt context (usbd_int)
+ *
+ * usbd_setup_send_ack
+ * usbd_setup_send_stall
+ *	Routines to call from handling of a setup packet, when data has been
+ *	received and an ACK or STALL has to be sent
+ * usbd_setup_recv_ack
+ *	Routines to call from handling of a setup packet, when data has been
+ *	sent and an ACK is being expected to be received from the host. This should
+ *	be used in a callback to a usbd_set_channel_tx, to use the automatic
+ *	double buffering in the SL811 and the polling to keep the timing reqs
+ *
+ * usbd_is_active
+ *	checks if an endpoint is active (i.e. in the process of transferring or 
+ *	awaiting some data).
+ *	in: x=endpoint, out: SEC if active, CLC if not	
+ * usbd_set_channel_rx
+ *	sets the endpoint channel receive buffer
+ *	in: a/y address of channel buffer desc
+ * usbd_set_channel_tx
+ *	sets the endpoint channel transmit buffer
+ *	in: a/y address of channel buffer desc
+ */
+
+	.(
+#ifdef SL811_DEV
+
+#define	usbdev_init		sl811d_init
+#define	usbdev_set_maxlen 	sl811d_set_maxlen
+#define	usbdev_start		sl811d_start
+#define	usbdev_reset 		sl811d_reset
+#define	usbdev_int		sl811d_int
+#define	usbdev_set_rx		sl811d_set_rx
+#define	usbdev_set_tx		sl811d_set_tx
+#define	usbdev_send_stall 	sl811d_send_stall
+#define	usbdev_send_ack		sl811d_send_ack
+#define	usbdev_recv_ack		sl811d_recv_ack
+#define	usbdev_set_addr		sl811d_set_addr
+#define	usbdev_is_active 	sl811d_is_active
+
+#include "sl811_dev.a65"
+
+#else
+#ifdef MAX3420_DEV
+
+#define	usbdev_init		max3420e_init
+#define	usbdev_set_maxlen 	max3420e_set_maxlen
+#define	usbdev_start		max3420e_start
+#define	usbdev_reset 		max3420e_reset
+#define	usbdev_int		max3420e_int
+#define	usbdev_set_rx		max3420e_set_rx
+#define	usbdev_set_tx		max3420e_set_tx
+#define	usbdev_send_stall 	max3420e_send_stall
+#define	usbdev_send_ack		max3420e_send_ack
+#define	usbdev_recv_ack		max3420e_recv_ack
+#define	usbdev_set_addr		max3420e_set_addr
+#define	usbdev_is_active 	max3420e_is_active
+
+#include "max3420e.a65"
+
+#endif	// MAX3420E
+#endif 	// SL811
+
+;-----------------------------------------------------------------
+; pass through some usbdev routines
+&usbd_int =usbdev_int
+&usbd_set_maxlen =usbdev_set_maxlen
+&usbd_set_channel_tx =usbdev_set_tx
+
+&usbd_setup_send_ack=send_ack_cb
+&usbd_setup_send_stall=send_stall
+&usbd_setup_recv_ack=recv_ack_cb
+
+&usbd_data_recv_ack=usbdev_recv_ack
+
+&usbd_is_active=usbdev_is_active
+
+;-----------------------------------------------------------------
+
+	.data
+
+newaddr	.byt 0
+
+ctrlbuf	.dsb USB_SETUP_SIZE, 0		; control endpoint setup buffer (8 byte)
+
+ctrl_ccb .word ctrlbuf, USB_SETUP_SIZE, rx_setup 	; control block for control endpoint rx
+	.byt 0, 0			; DATA0 (should be) checked against rx'd packet on rx
+
+desc_ccb .word 0, DESC_DEV_SIZE, usbd_setup_recv_ack	; device description control block
+	.byt USBD_FLAGS_TOGGLE, 0	; send DATA1 as first packet
+
+conf_ccb .word 0, 0, usbd_setup_recv_ack 	; configuration control block
+	.byt USBD_FLAGS_TOGGLE, 0	; send DATA1 as first packet
+conf_len .byt 0				; saved for short requests (where len in conf_ccb gets overwritten)
+
+;-----------------------------------------------------------------
+
+; maximum number of device callbacks
+#define	NUM_SETUP_CBS	4
+
+	.bss
+
+curcb	.byt 0				; current callback for loop
+curaddr	.word 0				; callback jump address
+setupcbn .byt 0				; number of callbacks
+setupcbl .dsb NUM_SETUP_CBS, 0		; callback table low
+setupcbh .dsb NUM_SETUP_CBS, 0		; callback table high
+
+	.text
+
+; Register an address (a/y) of a setup callback for a device.
+; If usbd_register returns SEC, the callback register table may
+; be full.
+;
+; The device callback is called when a setup packet is received
+; and cannot be handled by the code here. It returns with 
+; CLC if the setup packet has been handled, and SEC if not
+; If one call returns with CLC, no further callbacks are done
+; Callbacks are done in order of registration. The callback gets
+; the address of the setup packet (8 byte) in a/y
+;
+&usbd_register_device .(
+	ldx setupcbn
+	cpx #NUM_SETUP_CBS
+	bcs err
+	sta setupcbl,x
+	tya
+	sta setupcbh,x
+	inc setupcbn
+	clc
+err	rts
+	.)
+
+setup_cbs .(
+	lda #0
+	sta curcb
+loop	ldx curcb
+	cpx setupcbn
+	bcs done
+	lda setupcbl,x
+	sta curaddr
+	ldy setupcbh,x
+	sty curaddr+1
+	DMSG("SETUP CALL")
+	ora curaddr+1
+	beq next
+	; parameter for callback
+	lda #<ctrlbuf
+	ldy #>ctrlbuf
+	jsr dojmp
+	bcc done
+next	inc curcb
+	bne loop	; always
+done	rts
+dojmp	jmp (curaddr)
+	.)
+
+;-----------------------------------------------------------------
+
+
+&usbd_init .(
+	lda #0
+	sta setupcbn
+
+	jmp usbdev_init
+	.)
+
+&usbd_start .(
+	jsr usbdev_start
+	jsr init_ctrl
+	rts
+	.)
+
+;-----------------------------------------------------------------
+; this callback is called when a setup message is received
+; on the control endpoint
+rx_setup .(
+	//DMSG("RX_SETUP")	/* you can see it from bit 4 set in byte after "R" dbg output */
+	bcc ok
+	; error
+	jmp send_stall
+
+ok	tay	; bit 7 is set for setup packets
+	bpl send_stallx
+	; here we have a setup packet in ctrlbuf
+	; let's analyze
+	lda ctrlbuf		; device to host
+#ifdef DEBUG
+	pha
+	lda #"S"
+	jsr printc
+	pla
+	pha
+	jsr hexout
+	pla
+#endif
+	cmp #$80
+	bne not_2host
+	lda ctrlbuf+1		; request type 
+	cmp #6			; = get descriptor
+	bne not_getdescx
+	lda ctrlbuf+3		; descriptor type
+	cmp #1			; = device desc
+	bne not_devdesc
+	lda ctrlbuf+2		; descriptor index
+	bne send_stallx
+	; ok, send the device descriptor
+
+	; set the length of data to send
+	lda ctrlbuf + USB_SETUP_LEN+1
+	bne full
+	lda ctrlbuf + USB_SETUP_LEN
+	cmp #DESC_DEV_SIZE
+	bcc partial
+full	lda #DESC_DEV_SIZE
+partial	sta desc_ccb + USBD_CHAN_LEN
+	DMSG("SEND DEV DESC")
+	lda #<desc_ccb	
+	ldy #>desc_ccb
+	; xr is still set
+	jmp usbdev_set_tx
+send_stallx
+	jmp send_stall
+not_getdescx
+	jmp not_getdesc
+not_devdesc
+	cmp #2			; = config desc
+	bne not_confdesc
+	DMSG("SEND CONF DESC")
+	; fixup length of data to send
+	lda ctrlbuf+USB_SETUP_LEN+1
+	bne maxconf
+	lda ctrlbuf+USB_SETUP_LEN
+	cmp conf_len
+	bcc shortconf
+maxconf
+	lda conf_len
+shortconf
+	sta conf_ccb+USBD_CHAN_LEN
+	lda #<conf_ccb
+	ldy #>conf_ccb
+	jmp usbdev_set_tx
+not_2host
+	lda ctrlbuf+1		; request type
+#ifdef DEBUG
+	pha
+	jsr hexout
+	pla
+#endif
+	cmp #5			; = set address
+	bne not_setaddr
+	lda ctrlbuf+2		; new address
+	; setaddr is the only one where the value gets effective
+	; after the ack. I.e. we need to store it and set it after
+	; having sent the ack
+	DMSG("SET ADDR")
+	sta newaddr
+	; send ack with a callback that then sets the address
+	lda #<setaddr_cb
+	ldy #>setaddr_cb
+	jmp usbdev_send_ack
+	
+not_setaddr
+	cmp #9			; = set configuration
+	bne not_setconf
+	; ignore for now
+	jmp send_ack_cb
+
+not_setconf
+not_getdesc
+not_confdesc
+	jsr setup_cbs
+	bcs send_stall0		; if not handled, send stall
+	rts			; assumes ack is already sent if CLC
+send_stall0
+#ifdef DEBUG
+	DMSG("UNKNOWN")
+	ldy #0
+lun	lda ctrlbuf,y
+	jsr hexout
+	lda #" "
+	jsr printc
+	iny
+	cpy #8
+	bcc lun
+#endif
+&send_stall 
+	ldx #0			; need to set endpoint 
+	lda #<init_ctrl
+	ldy #>init_ctrl
+	jmp usbdev_send_stall
+	.)
+
+send_ack_cb .(
+	ldx #0
+	lda #<init_ctrl
+	ldy #>init_ctrl
+	jmp usbdev_send_ack
+	.)
+
+recv_ack_cb .(
+	ldx #0
+	lda #<init_ctrl
+	ldy #>init_ctrl
+	jmp usbdev_recv_ack
+	.)
+
+setaddr_cb .(
+	lda newaddr
+	jsr usbdev_set_addr
+	; jmp init_ctrl		; fall-through
+	
+; callback when a control or device descriptor
+; message has been fully transmitted
+&init_ctrl 
+	/*DMSG("INIT CTRL")*/
+	lda #<ctrl_ccb
+	ldy #>ctrl_ccb
+	ldx #0		; endpoint
+	jmp usbdev_set_rx
+	.)
+
+;-----------------------------------------------------------------
+
+&usbd_set_device_desc .(
+	sta desc_ccb + USBD_CHAN_BUF
+	sty desc_ccb + USBD_CHAN_BUF + 1
+	clc
+	rts
+	.)
+
+&usbd_set_conf_desc .(
+	sta conf_ccb + USBD_CHAN_BUF
+	sty conf_ccb + USBD_CHAN_BUF + 1
+	stx conf_len
+	clc
+	rts
+	.)
+
+;-----------------------------------------------------------------
+
+usbd_cb_reset .(
+	DMSG("RESET CALLBACK")
+	jsr usbdev_reset
+	jmp usbd_start
+	.)
+
+;-----------------------------------------------------------------
+
+	.)
+

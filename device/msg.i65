@@ -1,0 +1,70 @@
+/*
+    (C) 2011 Andre Fachat
+
+    This file is part of the 6502 USB Device Driver.
+
+    The 6502 USB Device Driver is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The 6502 USB Device Driver is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    Lesser GNU General Public License for more details.
+
+    You should have received a copy of the Lesser GNU General Public License
+    along with the 6502 USB Device Driver. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/*
+ * messages for the USB host controller
+ */
+
+#ifndef MSG_I65
+#define	MSG_I65
+
+#define	MSG_COPYRIGHT		0
+#define	MSG_KEYBOARD		1
+
+#define	ERR_BUFFER_OVERFLOW	<-1
+#define	ERR_ENDPOINT_NO		<-2
+#define	ERR_DEVICE		<-3
+#define	ERR_SPEED		<-4
+
+/*
+#define	MSG_VENDOR_PRODUCT	1
+#define	MSG_CLASS_SUBCLASS	2
+#define	MSG_MAX_PACKET_SIZE	3
+#define	MSG_MANUFACTURER	4
+#define	MSG_V12			5
+#define	MSG_V15			6
+#define	MSG_DETECT_LOW		7
+#define	MSG_DETECT_FULL		8
+#define	MSG_INITIALIZED		9
+#define	MSG_DETECT_HUB		10
+#define	MSG_ATTACH		11
+#define	MSG_DETACH		12
+#define	MSG_USB_VERSION		13
+#define	MSG_PRODUCT		14
+#define	MSG_SERIAL		15
+#define	MSG_NUM_CONFIG		16
+#define	MSG_DETECT_HID		17
+#define	MSG_HID_KEYBOARD	18
+#define	MSG_HID_MOUSE		19
+#define	MSG_DEVICE_NO		20
+#define	MSG_WAIT_KEY		21
+
+#define	ERR_CONFIG		<-2
+#define	ERR_STRING		<-3
+#define	ERR_VERSION		<-4
+#define	ERR_DEVICE		<-5
+#define	ERR_NO_HW		<-6
+#define	ERR_RESOURCE_HUB	<-7
+#define	ERR_RESOURCE_DEVICE	<-8
+#define	ERR_ROOT_DETACHED	<-9
+#define	ERR_PKLEN		<-10
+#define	ERR_UNKNOWN_DEVICE	<-11
+*/
+
+#endif
