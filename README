@@ -46,15 +46,18 @@ Content
 	USB host driver code
 - device/
 	UBS device driver code
+- common/
+	separated out common code (e.g. for messages, or USB headers)
+- drivers/
+	hardware drivers for USB and necessary others (like SPI)
+- hardware/
+	description of supported hardware
 
 Note: that currently that's all there is, as those have been separately developed.
 There will be new subdirectories for:
 
 - platform/
 	hold the platform specific code
-- common/
-	separated out common code (e.g. for messages, or USB headers)
-
 
 Build note
 ----------
