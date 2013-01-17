@@ -1,0 +1,175 @@
+
+#include "via6522.i65"
+
+
+/***********************************************************************/
+; Low level SPI routines
+;
+; These routines use the VIA shift register to shift out the data, and a 
+; hardware shift register connected to port B to read the data shifted in.
+;
+; note that the pure VIA shift register works as SPI mode 3, which is not
+; understood by many MMC/SD Cards. 
+;
+; By using INVCLK the SD card clock signal can be inverted (set CPOL=0).
+; To achieve CPHA=0, the first (MSB) bit must be sent out manually 
+; by XORing the current shift register output appropriately, which is
+; done via INVDAT.
+;
+; note code assumes the SD_INVDAT on bit 0 of the port A - so it can be
+; modified quickly by INC and DEC
+;
+; The code waits for the shift register to finish. You could do that with
+; NOPs as well for example, as a byte only takes 16 cycles. 
+; However, then you can't test it with lower clocks easily.
+
+
+; init the SPI code
+SD_INIT	.(
+	; deselect any device,
+	; do invert the clock (mode 0)
+	lda SD_VIA+VIA_DRA
+	ora #SD_SEL+SD_INVCLK
+	and #255-SD_INVDAT
+	sta SD_VIA+VIA_DRA
+
+	; set I/O port to output
+	lda SD_VIA+VIA_DDRA
+	ora #SD_SEL+SD_INVDAT+SD_INVCLK
+	sta SD_VIA+VIA_DDRA
+
+	; disable shift register interrupts
+	lda #%00000100
+	sta SD_VIA+VIA_IER
+#if 0
+	;---------------------------------
+	; Alternative 2 - shift out under T2
+	;
+	; this uses T2 as shift register timer,
+	; as it can be made slower, if you have 
+	; slow voltage converters for example
+
+	; set timer 2 to timed
+	lda SD_VIA+VIA_ACR
+	and #%11011111
+	sta SD_VIA+VIA_ACR
+
+	; set timer 2 
+	; (half-cycle is T2+2)
+	; set low byte first into latch
+	lda #SD_CLK
+	sta SD_VIA+VIA_T2CL
+	; high byte store sets counter
+	lda #0
+	sta SD_VIA+VIA_T2CH
+
+	; set up shift register mode to output
+	; under T2 control
+	lda SD_VIA+VIA_ACR
+	and #%11110111
+	ora #%00010100
+	sta SD_VIA+VIA_ACR	
+#else
+	;---------------------------------
+	; Alternative 2 - shift out under Phi2
+	;
+	; if your hardware is fast enough, you can
+	; shift out under control of phi2
+
+	; set up shift register mode to output
+	; under phi2 control, which makes bits go out
+	; on half phi2.
+	lda SD_VIA+VIA_ACR
+	and #%11111011
+	ora #%00011000
+	sta SD_VIA+VIA_ACR	
+#endif
+	;---------------------------------
+
+	; write first (dummy) byte, to make sure the last
+	; bit is low
+	lda #$0
+	sta SD_VIA+VIA_SR
+	rts
+	.)
+
+; deselect the SD card
+SD_DESELECT .(
+	lda SD_VIA+VIA_DRA
+	ora #SD_SEL
+	sta SD_VIA+VIA_DRA
+	jsr SD_READBYTE
+	rts
+	.)
+
+; select the SD card
+SD_SELECT .(	
+	lda SD_VIA+VIA_DRA	
+	and #255-SD_SEL
+	sta SD_VIA+VIA_DRA
+	rts
+	.)
+
+; send a $ff byte and keeping the data line high
+; which is needed for an MMC card to switch to SPI mode
+SD_SENDRESETBYTES .(
+	; invert data so first bit is already high
+	inc SD_VIA+VIA_DRA
+	ldx #10
+loop
+	lda #$00
+	sta SD_VIA+VIA_SR
+	; wait to finish
+	lda #%00000100
+wait1	bit SD_VIA+VIA_IFR
+	beq wait1
+end	; clear int
+	sta SD_VIA+VIA_IFR
+	; next resetbyte
+	dex
+	bne loop
+	; reset inverter
+	dec SD_VIA+VIA_DRA
+	rts
+	.)
+
+; send and read a byte
+SD_READBYTE .(
+	lda #$ff
+; send a byte only (could be optimized, 
+; but not when you have to wait to end the data inverter) 
+&SD_SENDBYTEW
+	; mode 0
+	; make sure last bit is 0, shifting bit 7 into carry
+	asl
+	bcs invert
+	; last bit was 0, nothing to do but send the byte
+	sta SD_VIA+VIA_SR
+	; wait to finish
+	lda #%00000100
+wait0	bit SD_VIA+VIA_IFR
+	beq wait0
+	bne end
+	
+invert	; invert the current bit (which is last bit from prev. 
+	; data byte, which we set to zero
+	inc SD_VIA+VIA_DRA
+	; compensate for the inversion
+	eor #$fe
+	; send out the data
+	sta SD_VIA+VIA_SR
+	; wait to finish
+	lda #%00000100
+wait1	bit SD_VIA+VIA_IFR
+	beq wait1
+	; reset inverter
+	dec SD_VIA+VIA_DRA
+end	; clear int
+	sta SD_VIA+VIA_IFR
+	; read read data
+	lda SD_VIA+VIA_DRB	; load from external shift reg
+	rts
+	.)
+
+
+

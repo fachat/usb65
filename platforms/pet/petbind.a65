@@ -1,0 +1,149 @@
+
+#define	TERM_FF		$93
+#define	TERM_HOME	$13
+
+	.(
+; load structure
+
+	.word $0401	; load addr
+	.word endline	; link addr
+	.word 10	; line no
+	.byt $9e	; SYS
+	.asc "1037"	; jump addr
+	.byt 0		; line end
+endline	.word 0		; eof link addr
+
+start	; sys jumps here
+	jsr iniirq
+	jsr PRG
+	jsr freirq
+	rts
+
+; binding
+
+; -----------------------------------------------------------------	
+; plug into IRQ routine to call DLOOP
+
+irqvec	=$90
+
+	.data
+	;.align 2	; jmp ($**FF) is broken on NMOS 6502
+	.dsb * - (* & $fffe)
+irqsave .word 0
+irqmode .byte 0
+	.text
+
+iniirq 	.(
+	lda irqvec
+	sta irqsave
+	lda irqvec+1
+	sta irqsave+1
+
+	lda #0
+	sta irqmode
+
+	sei
+	lda #<newirq
+	sta irqvec
+	lda #>newirq
+	sta irqvec+1
+	cli
+	rts
+	.)
+
+freirq	.(
+	sei
+	lda irqsave
+	sta irqvec
+	lda irqsave+1
+	sta irqvec+1
+	cli
+	rts
+	.)
+
+enairq	.(
+	lda #0
+	sta irqmode
+	rts
+	.)
+
+disirq	.(
+	inc irqmode
+	rts
+	.)
+
+newirq	.(
+	lda irqmode
+	bne noloop
+	jsr DLOOP
+noloop  jmp (irqsave)
+	.)
+
+; -----------------------------------------------------------------	
+; print character in AC to stdout
+; keep XR and YR, but not necessarily ST
+; convert from ASCII to PETSCII
+
+&PUTC	.(
+	cmp #$40
+	bcc p1
+	cmp #$5a
+	bcc p2
+	cmp #$60
+	bcc p1
+	cmp #$7a
+	bcs p1
+	adc #$60
+p2	eor #$80
+p1	jmp $FFD2
+	.)
+
+; -----------------------------------------------------------------	
+; get a character from stdin
+; keep XR and YR, but not necessarily ST
+; C=0 on return is ok, C=1 on return is eof
+
+&GETC	jsr enairq
+	jsr $FFCF
+	jsr disirq
+	clc
+	rts
+
+; -----------------------------------------------------------------	
+; check whether break has been pressed, C=1 means yes
+
+&CHECKBRK	; TODO
+	clc
+	rts
+
+; -----------------------------------------------------------------	
+; yield to other processes where available - simple delay
+
+&YIELD	.(
+	pha
+	tya
+	pha
+	ldy #0
+inc $8025
+yl	dey
+	bne yl
+	pla
+	tay
+	pla
+	rts
+	.)
+
+; -----------------------------------------------------------------	
+; ECHO is the Putc that prints chars received for line input
+
+&ECHO	rts
+
+	.)
+
+; -----------------------------------------------------------------	
+; include standard I/O functionality
+
+#include "stdio.a65"
+
+
+
