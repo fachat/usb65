@@ -31,10 +31,11 @@
 
 	.(
 
-#include "msg.i65"
+#include "hostmsg.i65"
+
+	.text
 
 	.word $0401
-	*=$0401
 	.word eol
 	.word 10
 	.byt $9e, "1040"
@@ -145,7 +146,7 @@ tomove
 
 /* current screen column for debug, so we can enter cr when appropriate */
 
-#include "msg.a65"
+#include "hostmsg.a65"
 #include "debug.a65"
 #include "usb.a65"
 	.(

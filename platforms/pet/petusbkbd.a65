@@ -83,7 +83,7 @@ pr_ptr          .word 0		; =$1e	; bb
 
 	.text
 
-#include "msg.i65"
+#include "devmsg.i65"
 #include "debug.i65"
 #include "usb.i65"
 
@@ -146,7 +146,7 @@ buf	.dsb 16,0
 /* current screen column for debug, so we can enter cr when appropriate */
 #define SCREENCOL       $c6
 
-#include "msg.a65"
+#include "devmsg.a65"
 #include "debug.a65"
 #include "usbdev.a65"
 #include "kbddev.a65"

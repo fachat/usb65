@@ -25,7 +25,7 @@ printc=$ffd2
 
 	.(
 
-#include "msg.i65"
+#include "hostmsg.i65"
 
 	.word $0401
 	.word eol
@@ -52,7 +52,7 @@ dbg_ptr		.word 0		;=$b1
 /* current screen column for debug, so we can enter cr when appropriate */
 #define	SCREENCOL	$c6
 
-#include "msg.a65"
+#include "hostmsg.a65"
 #include "debug.a65"
 #include "usb.a65"
 
