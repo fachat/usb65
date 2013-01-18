@@ -54,7 +54,8 @@
 #define	HOST_CTRL_BUFADDR	8	/* buffer addres to store data to */
 #define	HOST_CTRL_SETUP		10	/* 8 byte USB control packet */
 
-#define	HOST_FLAG_IGNORE_NAK	$80	/* ignore NAK when reading data; must be bit 7 */
+#define HOST_FLAG_IGNORE_NAK    $80     /* ignore NAK when reading data; must be bit 7 (bmi test) */
+#define HOST_FLAG_DATA1         $40     /* next packet is DATA1, not DATA0 */
 
 ; ---------------------------------------------------------------------------------------
 ; input value to the poll routine when carry is set
