@@ -52,12 +52,9 @@ Content
 	hardware drivers for USB and necessary others (like SPI)
 - hardware/
 	description of supported hardware
-
-Note: that currently that's all there is, as those have been separately developed.
-There will be new subdirectories for:
-
 - platform/
-	hold the platform specific code
+	hold the platform specific code.
+	Here reside the main programs with the build code
 
 Build note
 ----------
