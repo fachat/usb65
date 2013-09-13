@@ -136,9 +136,18 @@
 #define SL811_HOST      $ec98
 #include "sl811_host.a65"
 #endif
+
 #ifdef MAX3421_HOST
+
+#ifdef SPI65_SPI
 #include "spi65b.i65"
 #include "spi65b.a65"
+#endif
+#ifdef CBMSPI_SPI
+#include "cbmspi.i65"
+#include "cbmusb_pet.a65"
+#endif
+
 #include "max3421e.a65"
 #endif
 

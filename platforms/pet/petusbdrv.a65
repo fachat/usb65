@@ -44,8 +44,11 @@
 eol	.word 0
 	.dsb 1040-*, $aa
 
+#define PET
 #ifdef PET
-#define	SL811_HOST	$ac98
+#define	MAX3421_HOST
+#undef	SPI65_SPI
+#define	CBMSPI_SPI
 #else
 #define	SL811_HOST	$ec98
 #endif

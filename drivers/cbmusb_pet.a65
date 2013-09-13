@@ -1,0 +1,183 @@
+
+#include "via6522.i65"
+
+
+/***********************************************************************/
+; Low level SPI routines for the CBMUSB device connected to the PET
+;
+; These routines use the VIA shift register to shift out the data, and a 
+; hardware shift register connected to port B to read the data shifted in.
+;
+; note that the pure VIA shift register works as SPI mode 3, which is not
+; understood by many MMC/SD Cards, but it is ok with the used USB chip
+;
+; The code waits for the shift register to finish. You could do that with
+; NOPs as well for example, as a byte only takes 16 cycles. 
+; However, then you can't test it with lower clocks easily.
+
+
+; Connections:
+; 	VIA CB2	(Beeper)		out to SPI MOSI
+;	VIA CB1	(CASS#2 read)		out to SPI CLK
+;	VIA PA0-7			in from SPI IN shift register
+;	VIA PB3	(CASS write)		out to SPI SEL
+;	VIA CA1	(userport)		in from SPI INT
+;	PIA PA4/5 (CASS#1/2 Sense) 	to SPI RESET
+;	PIA PA7 (DIAG)			to switch beeper off
+;
+; Defines:
+;	SPIVIA				$e840
+;	SPIPIA				$e810
+;
+
+#include "via6522.i65"
+#include "pia6521.i65"
+
+	.(
+SPIVIA		=$e840
+SPIPIA		=$e810
+
+SPI_SEL		=%00001000		; PB3
+SPI_RES		=%00010000		; PIA PA4
+SPI_ANTIBEEP	=%10000000		; PIA PA7
+
+SPI_CLK		=10			; 2*(N+2) = 24us per SPI bit for T2
+
+; init the SPI code
+&cbmspi_init .(
+	; deselect device,
+	; VIA PB3 (SEL) as output and high
+	lda SPIVIA+VIA_DRB
+	ora #SPI_SEL
+	sta SPIVIA+VIA_DRB
+	lda SPIVIA+VIA_DDRB
+	ora #SPI_SEL
+	sta SPIVIA+VIA_DDRB
+	; release RESET
+	; PIA Data direction register
+	lda SPIPIA+PIA_CRA
+	and #255-PIA_CR_DSEL
+	sta SPIPIA+PIA_CRA
+	; RESET and Beeper-off
+	lda SPIPIA+PIA_PA
+	ora #SPI_RES+SPI_ANTIBEEP
+	sta SPIPIA+PIA_PA
+	; PIA I/O port
+	lda SPIPIA+PIA_CRA
+	ora #PIA_CR_DSEL
+	sta SPIPIA+PIA_CRA
+	; setting I/O lines
+	lda SPIPIA+PIA_PA
+	ora #SPI_RES		; RESET high
+	and #255-SPI_ANTIBEEP	; Beeper off
+	sta SPIPIA+PIA_PA
+	; VIA PA as input
+	lda #0
+	sta SPIVIA+VIA_DDRA
+	; VIA CA1, CBX operation
+	lda SPIVIA+VIA_PCR
+	and #%11101110		; neg edge CA1, CB1 irq
+	ora #%11100000		; CB2 high out (CBx will be overwritten with SR)
+	sta SPIVIA+VIA_PCR
+	
+	; disable shift register, CA1, CBx interrupts
+	lda #%00011110
+	sta SPIVIA+VIA_IER
+#if 1
+	;---------------------------------
+	; Alternative 1 - shift out under T2
+	;
+	; this uses T2 as shift register timer,
+	; as it can be made slower, if you have 
+	; slow voltage converters for example
+
+	; set timer 2 to timed
+	lda SPIVIA+VIA_ACR
+	and #%11011111
+	sta SPIVIA+VIA_ACR
+
+	; set timer 2 
+	; (half-cycle is T2+2)
+	; set low byte first into latch
+	lda #<SPI_CLK
+	sta SPIVIA+VIA_T2CL
+	; high byte store sets counter
+	lda #>SPI_CLK
+	sta SPIVIA+VIA_T2CH
+
+	; set up shift register mode to output
+	; under T2 control
+	lda SPIVIA+VIA_ACR
+	and #%11110111
+	ora #%00010100
+	sta SPIVIA+VIA_ACR	
+#else
+	;---------------------------------
+	; Alternative 2 - shift out under Phi2
+	;
+	; if your hardware is fast enough, you can
+	; shift out under control of phi2
+
+	; set up shift register mode to output
+	; under phi2 control, which makes bits go out
+	; on half phi2.
+	lda SPIVIA+VIA_ACR
+	and #%11111011
+	ora #%00011000
+	sta SPIVIA+VIA_ACR	
+#endif
+	;---------------------------------
+
+	; reset the device
+	lda SPIVIA+PIA_PA
+	and #255-SPI_RES
+	sta SPIVIA+PIA_PA
+
+	ldy #0
+	ldx #0
+delay	inx
+	bne delay
+	iny
+	bne delay
+	
+	lda SPIVIA+PIA_PA
+	ora #SPI_RES
+	sta SPIVIA+PIA_PA
+	; reset done
+
+	rts
+	.)
+
+; select the device
+&cbmspi_select .(	
+	lda SPIVIA+VIA_DRB	
+	and #255-SPI_SEL
+	sta SPIVIA+VIA_DRB
+	rts
+	.)
+
+; deselect the device
+&cbmspi_deselect .(
+	lda SPIVIA+VIA_DRB
+	ora #SPI_SEL
+	sta SPIVIA+VIA_DRB
+	lda #$ff
+	;jmp cbmspi_rxtx
+	.)
+	; fall-through
+&cbmspi_rxtx .(
+	sta SPIVIA+VIA_SR
+	; wait to finish
+	lda #%00000100
+wait0	bit SPIVIA+VIA_IFR
+	beq wait0
+end	; clear int
+	sta SPIVIA+VIA_IFR
+	; read read data
+	lda SPIVIA+VIA_DRA	; load from external shift reg
+	rts
+	.)
+
+
+	.)
+

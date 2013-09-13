@@ -1,0 +1,41 @@
+/*
+    (C) 2013 Andre Fachat
+    
+    This file is part of the 6502 USB Device Driver.
+
+    The 6502 USB Device Driver is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The 6502 USB Device Driver is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    Lesser GNU General Public License for more details.
+
+    You should have received a copy of the Lesser GNU General Public License
+    along with the 6502 USB Device Driver. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/*
+ * CBMUSB register and bit definitions
+ */
+
+#ifndef CBMUSB_H
+#define	CBMUSB_H
+
+#define	spi_init		\
+	cbmspi_init
+
+#define	spi_enable(x)		\
+	jsr cbmspi_select
+
+#define	spi_disable(x)		\
+	jsr cbmspi_deselect
+
+#define	spi_wra()		\
+	jsr cbmspi_rxtx
+
+
+#endif
+

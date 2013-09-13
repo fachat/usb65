@@ -107,8 +107,8 @@ retries	.word 0
 
 	; wait for oscillator (chip reset stops it, need to wait for coming up)
 l0	rreg(rUSBIRQ)
-;sta $8000+999
-;inc $8000+998
+sta $8000+999
+inc $8000+998
 	and #bmOSCOKIRQ
 	beq l0
 
@@ -221,7 +221,7 @@ setspeed
 
 ; set params from the HOST_CTRL_* struct
 set_params .(
-#if 0 //def DEBUG_HW
+#ifdef DEBUG_HW
 	lda #"/"
 	jsr printc
 #endif
@@ -664,7 +664,7 @@ docmd 	.(
 
 	; wait for completion
 l0	
-#if 0 //def DEBUG_HW
+#ifdef DEBUG_HW
 	inc $8026
 #endif
 	rreg(rHIRQ)

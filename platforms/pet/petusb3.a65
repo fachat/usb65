@@ -18,7 +18,7 @@
 */
 
 #define	DEBUG
-#undef	DEBUG_POLL
+#define	DEBUG_POLL
 #define	DEBUG_HW
 
 printc=$ffd2
