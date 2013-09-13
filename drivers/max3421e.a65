@@ -60,11 +60,9 @@
 
 MAX3421E_EnMask = 0x04
 
-#include "spi65b.i65"
 #include "usb.i65"
 #include "max3421e.i65"
 
-#include "spi65b.a65"
 	.(
 
 	.zero
@@ -109,6 +107,8 @@ retries	.word 0
 
 	; wait for oscillator (chip reset stops it, need to wait for coming up)
 l0	rreg(rUSBIRQ)
+;sta $8000+999
+;inc $8000+998
 	and #bmOSCOKIRQ
 	beq l0
 

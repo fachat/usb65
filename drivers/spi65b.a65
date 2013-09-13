@@ -3,7 +3,8 @@
 
 
 spi_init .(
-	lda #$04	; ECE external clock enable
+	lda #$04	; ECE external clock enable, SPI mode 0
+	;lda #$07	; ECE external clock enable, SPI mode 3
 	sta SPICR
 	lda #0
 	sta SPIDIV

@@ -12,9 +12,9 @@ DRIVER_FILES=../../drivers/sl811_host.a65 ../../drivers/sl811_host.i65 \
 	../../drivers/sl811_dev.a65 ../../drivers/sl811_dev.i65 \
 	../../drivers/viaspi.a65
 COMMON_FILES=../../common/debug.i65 ../../common/debug.a65 ../../common/usb.i65 \
-	../../common/via.i65
+	../../common/via6522.i65
 
-FILE=$(COMMON_FILES) $(DRIVER_FILES)
+FILES=$(COMMON_FILES) $(DRIVER_FILES)
 
 XA=xa -R -U -c -bt 1023 -bz 17 -XC -XMASM -I../../common -I../../drivers
 LINK=reloc65 -bt 1023 -bz 17 -X -v
