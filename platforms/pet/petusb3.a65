@@ -18,7 +18,7 @@
 */
 
 #define	DEBUG
-#define	DEBUG_POLL
+#undef	DEBUG_POLL
 #define	DEBUG_HW
 
 printc=$ffd2
@@ -36,6 +36,8 @@ eol	.word 0
 	.dsb 1040-*, $00
 	jmp start
 
+irqvec  =$90
+irqsave .word 0
 
 	.zero
 ; print routine pointer
@@ -56,7 +58,85 @@ dbg_ptr		.word 0		;=$b1
 #include "debug.a65"
 #include "usb.a65"
 
+iniirq  .(
+        lda irqvec
+        sta irqsave
+        lda irqvec+1
+        sta irqsave+1
+
+        ;lda #0
+        ;sta irqmode
+
+        sei
+        lda #<newirq
+        sta irqvec
+        lda #>newirq
+        sta irqvec+1
+        cli
+        rts
+        .)
+
+freirq  .(
+        sei
+        lda irqsave
+        sta irqvec
+        lda irqsave+1
+        sta irqvec+1
+        cli
+        rts
+        .)
+
+
+newirq  .(
+;        lda irqmode
+;        bne noloop
+;        jsr DLOOP
+noloop  ;jmp (irqsave)
+
+        ; the PET sets the MTR line on the tape, no matter what,
+        ; esp. with the SENSE line.
+        ; So we need to emulate the original IRQ routine up to the 
+        ; point behind that MTR code
+
+        jsr $f768       ; update jiffy
+        ; cursor handling
+        lda $a7
+        bne e474        ; $d0 $18
+        dec $a8
+        bne e474        ; $d0 $14
+        lda #$14
+        sta $a8
+        ldy $c6
+        lsr $aa
+        lda ($c4),y
+        bcs e476        ; $b0 $04
+        inc $aa
+        sta $a9
+e476
+        eor #$80
+        sta ($c4),y
+e474
+        ; ???
+        ldx #$ff
+        stx $a6
+        inx
+        stx $98
+        ldx #$50
+;e47d
+        lda $e810
+        and #$f0
+        sta $e810
+;e485
+        ; MTR handling removed
+;e4b5
+        ; keyboard read
+        jmp $e4b5
+
+
+        .)
+
 start	.(
+	jsr iniirq
 
 	lda #14
 	jsr printc		; lower/upper case mode
@@ -82,10 +162,12 @@ poll
 	; no device attached, so just wait until RUN/STOP
 	jsr $f335	
 	bne poll
-	rts
+	beq end
 error
 	ldy #ERR_DEVICE
 	jsr printx
+end
+	jsr freirq
 	rts	
 	.)
 

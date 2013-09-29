@@ -33,6 +33,8 @@
 ; Control Reg Data register select (1=I/O, 0=direction)
 #define	  PIA_CR_DSEL	%00000100
 #define	  PIA_CR_CBIO	%00100000
+#define	  PIA_CR_CBLVL	%00010000
+#define	  PIA_CR_STRB	%00001000
 
 #endif
 

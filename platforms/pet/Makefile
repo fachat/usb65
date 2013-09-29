@@ -16,10 +16,12 @@ COMMON_FILES=../../common/debug.i65 ../../common/debug.a65 ../../common/usb.i65 
 
 FILES=$(COMMON_FILES) $(DRIVER_FILES)
 
-XA=xa -R -U -c -bt 1023 -bz 17 -XC -XMASM -I../../common -I../../drivers
-LINK=reloc65 -bt 1023 -bz 17 -X -v
+#XA=xa -R -U -c -bt 1023 -bz 17 -XC -XMASM -I../../common -I../../drivers
+#LINK=reloc65 -bt 1023 -bz 17 -X -v
+XA=xa -R -U -c -bt 1023 -bz 66 -XC -XMASM -I../../common -I../../drivers
+LINK=reloc65 -bt 1023 -bz 66 -X -v
 
-all: CSAUSB_SL811H CSAUSB_MAX3421 CSAUSBDRV PETUSBDRV CSAUSBKBD_SL811 CSAUSBKBD_MAX3420 PETUSB_CBMUSB
+all: CSAUSB_SL811H CSAUSB_MAX3421 CSAUSBDRV PETUSBDRV CSAUSBKBD_SL811 CSAUSBKBD_MAX3420 PETUSB_CBMUSB PETUSBDRV_CBMUSB
 
 CSAUSB_SL811H: petusb3.a65 $(FILES) $(HOST_FILES)
 	$(XA) -I../../host -DSL811_HOST petusb3.a65 -o $@.o65 -l $@.l -P $@.lst
@@ -34,11 +36,15 @@ PETUSB_CBMUSB: petusb3.a65 $(FILES) $(HOST_FILES)
 	$(LINK) -o $@ $@.o65 
 
 PETUSBDRV: petusbdrv.a65 $(FILES) $(HOST_FILES)
-	$(XA) -I../../host -DPET=1 petusbdrv.a65 -o $@ -l $@.l
+	$(XA) -I../../host -DPET=1 petusbdrv.a65 -o $@.o65 -l $@.l
+	$(LINK) -o $@ $@.o65 
+
+PETUSBDRV_CBMUSB: petusbdrv.a65 $(FILES) $(HOST_FILES)
+	$(XA) -I../../host -DPET=1 -DMAX3421_HOST -DCBMSPI_SPI petusbdrv.a65 -o $@.o65 -l $@.l
 	$(LINK) -o $@ $@.o65 
 
 CSAUSBDRV: petusbdrv.a65 $(FILES)
-	$(XA) -I../../host petusbdrv.a65 -o $@ -l $@.l
+	$(XA) -I../../host petusbdrv.a65 -o $@.o65 -l $@.l
 	$(LINK) -o $@ $@.o65 
 
 

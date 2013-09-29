@@ -459,7 +459,7 @@ n2	inx
 	; here ac has new device number, y the new slot
 
 	sta devnum,y		; is needed by getdesc below! Reserves control slot!
-
+DMSG("DOSETADDR")
 	jsr dosetaddr		; get new device num, set it to device
 	bcs errexit
 
@@ -467,6 +467,7 @@ n2	inx
 	tya			; slot number
 	ldx #DESC_TYPE_DEVICE	; request device descriptor
 	ldy #0			; desc index 0
+DMSG("USB_GETDESC")
 	jsr usb_getdesc
 	bcc gotdesc
 	bcs errexit		; release resources (devnum, slot)

@@ -225,7 +225,8 @@ nohack
 	lda lock
 	bpl poll
 	; back into original irq routine
-nopoll	jmp (irqv)
+nopoll	;jmp (irqv)
+	jmp newirq2
 poll
 #ifdef DEBUG
 	tsx
@@ -492,6 +493,54 @@ sl	ldx screenbuf-1,y
 screenbuf .dsb SCRLEN
 
 	.)
+
+newirq2  .(
+;        lda irqmode
+;        bne noloop
+;        jsr DLOOP
+noloop  ;jmp (irqsave)
+
+        ; the PET sets the MTR line on the tape, no matter what,
+        ; esp. with the SENSE line.
+        ; So we need to emulate the original IRQ routine up to the 
+        ; point behind that MTR code
+
+        jsr $f768       ; update jiffy
+        ; cursor handling
+        lda $a7
+        bne e474        ; $d0 $18
+        dec $a8
+        bne e474        ; $d0 $14
+        lda #$14
+        sta $a8
+        ldy $c6
+        lsr $aa
+        lda ($c4),y
+        bcs e476        ; $b0 $04
+        inc $aa
+        sta $a9
+e476
+        eor #$80
+        sta ($c4),y
+e474
+        ; ???
+        ldx #$ff
+        stx $a6
+        inx
+        stx $98
+        ldx #$50
+;e47d
+        lda $e810
+        and #$f0
+        sta $e810
+;e485
+        ; MTR handling removed
+;e4b5
+        ; keyboard read
+        jmp $e4b5
+
+
+        .)
 
 	.)
 

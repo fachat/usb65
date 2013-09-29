@@ -37,22 +37,30 @@
 SPIVIA		=$e840
 SPIPIA		=$e810
 
-SPI_SEL		=%00001000		; PB3
+SPI_SEL		=%00001000		; VIA PB3
+SPI_MTR		=%00010000		; VIA PB4 (Tape 2) - Tape1 is PIA1 CB2
+
 SPI_RES		=%00010000		; PIA PA4
 SPI_ANTIBEEP	=%10000000		; PIA PA7
 
-SPI_CLK		=10			; 2*(N+2) = 24us per SPI bit for T2
+SPI_CLK		=100			; 2*(N+2) = 24us per SPI bit for T2
 
 ; init the SPI code
 &cbmspi_init .(
+
+lda #"S"
+jsr $ffd2
+
 	; deselect device,
 	; VIA PB3 (SEL) as output and high
 	lda SPIVIA+VIA_DRB
 	ora #SPI_SEL
+	;and #255-SPI_MTR
 	sta SPIVIA+VIA_DRB
 	lda SPIVIA+VIA_DDRB
-	ora #SPI_SEL
+	ora #SPI_SEL+SPI_MTR
 	sta SPIVIA+VIA_DDRB
+
 	; release RESET
 	; PIA Data direction register
 	lda SPIPIA+PIA_CRA
@@ -71,6 +79,13 @@ SPI_CLK		=10			; 2*(N+2) = 24us per SPI bit for T2
 	ora #SPI_RES		; RESET high
 	and #255-SPI_ANTIBEEP	; Beeper off
 	sta SPIPIA+PIA_PA
+
+	; set MTR (PIA1 CB2)
+	lda SPIPIA+PIA_CRB
+	ora #PIA_CR_CBIO+PIA_CR_CBLVL
+	and #255-PIA_CR_STRB	; set to low
+	sta SPIPIA+PIA_CRB
+
 	; VIA PA as input
 	lda #0
 	sta SPIVIA+VIA_DDRA
@@ -129,9 +144,9 @@ SPI_CLK		=10			; 2*(N+2) = 24us per SPI bit for T2
 	;---------------------------------
 
 	; reset the device
-	lda SPIVIA+PIA_PA
+	lda SPIPIA+PIA_PA
 	and #255-SPI_RES
-	sta SPIVIA+PIA_PA
+	sta SPIPIA+PIA_PA
 
 	ldy #0
 	ldx #0
@@ -140,9 +155,9 @@ delay	inx
 	iny
 	bne delay
 	
-	lda SPIVIA+PIA_PA
+	lda SPIPIA+PIA_PA
 	ora #SPI_RES
-	sta SPIVIA+PIA_PA
+	sta SPIPIA+PIA_PA
 	; reset done
 
 	rts
@@ -161,7 +176,8 @@ delay	inx
 	lda SPIVIA+VIA_DRB
 	ora #SPI_SEL
 	sta SPIVIA+VIA_DRB
-	lda #$ff
+	rts
+	;lda #$ff
 	;jmp cbmspi_rxtx
 	.)
 	; fall-through
@@ -174,7 +190,10 @@ wait0	bit SPIVIA+VIA_IFR
 end	; clear int
 	sta SPIVIA+VIA_IFR
 	; read read data
-	lda SPIVIA+VIA_DRA	; load from external shift reg
+rd	lda SPIVIA+VIA_DRA	; load from external shift reg
+	cmp SPIVIA+VIA_DRA
+	bne rd
+	cmp #0
 	rts
 	.)
 

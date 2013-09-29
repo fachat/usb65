@@ -91,6 +91,9 @@ retries	.word 0
 
 ; check
 &max3421_init .(
+	lda #"M"
+	jsr $ffd2
+
 	DMSG("MAX3421 INIT")
         ; can't really detect HW for now
 
@@ -116,6 +119,9 @@ inc $8000+998
 	; weak pull down on D+ and D- for SAMPLEBUS to work
 	wreg(rMODE, bmHOST + bmDPPULLDN + bmDMPULLDN)
 
+	; success
+	clc	
+
 	; Note: we don't use interrupts, so we don't need to enable
 	; them here - we just poll them in polldev
 	DMSG("MAX3421 INIT DONE")
@@ -133,12 +139,16 @@ err	rts
 	bmi check
 
 	rreg(rHIRQ)
+sta $8027+80
 	and #bmCONDETIRQ
 	beq nochange
 DMSG("CONDETIRQ")
 check
 	lda #bmCONDETIRQ
 	wrac(rHIRQ)		; clear interrupt bit, just in case
+#ifdef DEBUG_HW
+	inc $8027+40
+#endif
 
 	; only called when changed, so ok to change LOWSPEED bit
 	; with this call
@@ -164,6 +174,7 @@ found	clc
 	jsr pause
 
 	jsr queryusbdevice
+DMSG("OUT_OF_QUERY")
 	bcs device
 
 	;jsr clearirq
@@ -213,7 +224,9 @@ setspeed
 
 	; clear connect IRQ, as may be set by changing LOWSPEED
 	wreg(rHIRQ, bmCONDETIRQ)
-
+#ifdef DEBUG_HW
+	inc $8025+40
+#endif
 	;lda #<-1
 	;sta polled
 	rts
@@ -315,7 +328,7 @@ end	rts
 
 ; IN transfer into buffer as given (in ctrlptr)
 get_in	.(
-#if 0 //def DEBUG_HW
+#ifdef DEBUG_HW
 	lda endpt
 	;ldx len
 	ldy maxpklen
@@ -467,7 +480,7 @@ wrtog	sta (ctrlptr),y
 	.)
 
 &max3421_control .(
-	//DMSG("CONTROL")
+	DMSG("CONTROL")
 	sta ctrlptr
 	sty ctrlptr+1
 
@@ -482,6 +495,11 @@ wrtog	sta (ctrlptr),y
 	; send setup packet
 	jsr sendsetup
 	bcs err
+
+#ifdef DEBUG_HW
+	lda #"&"
+	jsr printc
+#endif
 
 	; set dataptr to data buffer address
 	jsr ptr_to_buffer
@@ -521,7 +539,9 @@ dohs
 
 	pla
 	plp
-err	rts
+	rts
+err	DMSG("CONTROL ERR")
+	rts
 	
 	.)
 
@@ -652,7 +672,7 @@ docmd 	.(
 	; clear xfer done irq, just in case
 	wreg(rHIRQ, bmHXFRDNIRQ)
 
-#if 0 //def DEBUG_HW
+#ifdef DEBUG_HW
 	lda #"O"
 	jsr printc
 	pla
@@ -678,7 +698,7 @@ l0
 	;cmp #hrBUSY
 	;beq l0
 	;cmp #0
-#if 0 //def DEBUG_HW
+#ifdef DEBUG_HW
 	pha
 	jsr hexout
 	pla
@@ -724,6 +744,7 @@ retry
 	bne retry
 	sec
 	ldy #ERR_DEVICE
+DMSG("SETUP ERR")
 	rts
 noerror
 	clc
@@ -763,6 +784,7 @@ setit
 ; C=1 device detected
 ; C=0 device not present
 queryusbdevice .(
+//DMSG("QUERYUSBDEV")
 	wreg(rHCTL, bmSAMPLEBUS)
 
 	; wait for end of sampling
@@ -774,6 +796,8 @@ queryusbdevice .(
 
 	; check bus status
 	rreg(rHRSL)
+inc $8027+80
+sta $8026+80
 	and #bmJSTATUS + bmKSTATUS	; if both are zero
 	beq nodevice
 	lsr				; div by 2, so is $00/20/40/60, but never neg
@@ -795,6 +819,9 @@ isfullspeed
 	pha
 	; clear connect IRQ, as may be set by changing LOWSPEED or SAMPLEBUS
 	wreg(rHIRQ, bmCONDETIRQ)
+#ifdef DEBUG_HW
+	inc $8026+40
+#endif
 	pla
 	sec
 	rts
@@ -811,6 +838,7 @@ nodevice
 ;4.  Wait for at least one FRAMEIRQ.
 
 usbreset .(
+DMSG("USBRESET")
 	; switch off sof frames
 	rreg(rMODE)
 	and #255-bmSOFKAENAB
@@ -845,7 +873,7 @@ l1	rreg(rHIRQ)
 	and #bmFRAMEIRQ
 	beq l1
 	wrac(rHIRQ)
-
+DMSG("EOR")
 	rts
 	.)
 
