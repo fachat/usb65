@@ -520,7 +520,7 @@ waitkeypress .(
 	lda $9e
 	beq waitkeypress
 	sei
-	jmp $e003
+	jmp $e0a7
 	.)
 
 swap	.(
