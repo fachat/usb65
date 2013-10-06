@@ -1,6 +1,4 @@
 
-#include "via6522.i65"
-
 
 /***********************************************************************/
 ; Low level SPI routines for the CBMUSB device connected to the PET
