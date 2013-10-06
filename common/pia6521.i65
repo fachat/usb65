@@ -21,20 +21,17 @@
 
 ****************************************************************************/
 
-#ifndef PIA_PA
-
 /*        Struct    PIA 6821       */
 
-#define   PIA_PA    0
-#define   PIA_CRA   1
-#define   PIA_PB    2
-#define   PIA_CRB   3
+PIA_PA    =0
+PIA_CRA   =1
+PIA_PB    =2
+PIA_CRB   =3
 
 ; Control Reg Data register select (1=I/O, 0=direction)
-#define	  PIA_CR_DSEL	%00000100
-#define	  PIA_CR_CBIO	%00100000
-#define	  PIA_CR_CBLVL	%00010000
-#define	  PIA_CR_STRB	%00001000
+PIA_CR_DSEL	=%00000100
+PIA_CR_CBIO	=%00100000
+PIA_CR_CBLVL	=%00010000
+PIA_CR_STRB	=%00001000
 
-#endif
 
