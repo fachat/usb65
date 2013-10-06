@@ -1,5 +1,5 @@
 /*
-    (C) 2011 Andre Fachat
+    (C) 2011-2013 Andre Fachat
 
     This file is part of the 6502 USB Host Driver.
 
@@ -31,7 +31,15 @@
 
 	.(
 
+#ifdef LOADER
+
 #include "hostmsg.i65"
+
+; pointer to size of memory for PET BASIC 4
+MEMSIZ		=$34
+; pointer to begin of string area
+FRETOP		=$30
+
 
 	.text
 
@@ -44,50 +52,16 @@
 eol	.word 0
 	.dsb 1040-*, $aa
 
-#define PET
-#ifdef PET
-#define	MAX3421_HOST
-#undef	SPI65_SPI
-#define	CBMSPI_SPI
-#else
-#define	SL811_HOST	$ec98
-#endif
+start	.(
+
+len	=8*1024
 
 	.zero
-
-; all pointers are used only by TAPE code
-; print routine pointer
-ZPRINTPTR	.word 0		;=$b1
-; device driver pointer
-ZUDEVPTR1	.word 0		;=$b6
-; general pointer within USB code
-ptr		.word 0		;=$b8
-; debug code pointer (to save inline string address)
-dbg_ptr		.word 0		;=$c0
-
+ptr1	.word 0
+ptr2	.word 0
 	.text
 
-; pointer to size of memory for PET BASIC 4
-MEMSIZ		=$34
-; pointer to begin of string area
-FRETOP		=$30
-
-#ifdef DEBUG
-DBGBASE		=$8028		; screen plus one line, so PETUSBKBD can use first line
-SCRBASE		=$8028		; screen plus one line, so PETUSBKBD can use first line
-#else
-SCRBASE		=$8000
-#endif
-
-start	.(
-#ifdef DEBUG
-len	=8*1024
-#else
-len	=6*1024
-#endif
-ptr1	=ptr
-ptr2	=dbg_ptr
-newpos	=$8000-len
+&newpos	=$8000-len
 
 	lda #<tomove
 	sta ptr1
@@ -118,34 +92,84 @@ loop	lda (ptr1),y
 	sta MEMSIZ+1
 	sta FRETOP+1
 
-	jsr init_scr		; init virtual screen
+	jsr newpos+15		; init_scr		; init virtual screen
 
 	;lda #14
 	;jsr printc		; lower/upper case mode
 
 	ldy #MSG_COPYRIGHT
-	jsr print
+	jsr newpos+3
 
 #ifdef PET
 	lda #3
 	sta $e809
 #endif
-	jsr usb_init
+	jsr newpos+18		; startint - to keep MOTOR save
+	
+	jsr newpos		; usb_init
 	bcc hwfound
 	tay			; error number
-	jsr print
+	jsr newpos+3		; print
 
-	jsr scr_flush
+	jsr newpos+6		; scr_flush
+
+	jsr newpos+21		; endint
 	rts
 hwfound
-	jsr prversion
+	jsr newpos+9		;prversion
 
-	jmp start2
+	jmp newpos+12		; start2
 
 tomove
 	; assemble code for new position
-	*=newpos
 	.)
+
+#endif		; LOADER
+
+#ifdef DRIVER
+
+#define PET
+#ifdef PET
+#define	MAX3421_HOST
+#undef	SPI65_SPI
+#define	CBMSPI_SPI
+#else
+#define	SL811_HOST	$ec98
+#endif
+
+#include "hostmsg.i65"
+
+	.zero
+
+; all pointers are used only by TAPE code
+; print routine pointer
+ZPRINTPTR	.word 0		;=$b1
+; device driver pointer
+ZUDEVPTR1	.word 0		;=$b6
+; general pointer within USB code
+ptr		.word 0		;=$b8
+; debug code pointer (to save inline string address)
+dbg_ptr		.word 0		;=$c0
+
+	.text
+
+#ifdef DEBUG
+DBGBASE		=$8028		; screen plus one line, so PETUSBKBD can use first line
+SCRBASE		=$8028		; screen plus one line, so PETUSBKBD can use first line
+#else
+SCRBASE		=$8000
+#endif
+
+IRQV	=$0090
+
+	jmp usb_init
+	jmp print
+	jmp scr_flush
+	jmp prversion
+	jmp start2
+	jmp init_scr
+	jmp startint
+	jmp endint
 
 /* current screen column for debug, so we can enter cr when appropriate */
 
@@ -153,12 +177,18 @@ tomove
 #include "debug.a65"
 #include "usb.a65"
 	.(
+	.data
 irqv	.word 0
 lock	.byt 0
+	.text
 
-IRQV	=$0090
 
 &start2	
+	lda #0
+	sta lock
+	rts
+
+&startint 
 	jsr scr_flush
 
 	; patch the poll routine into the interrupt routine
@@ -167,7 +197,7 @@ IRQV	=$0090
 	; the usb driver is not entered again until the poll is done
 	php
 	sei
-	lda #0
+	lda #<-1	; first lock, so that only MOTOR line is held, but no USB stuff
 	sta lock
 
 	lda IRQV
@@ -181,6 +211,17 @@ IRQV	=$0090
 	sta IRQV+1
 	plp		; implicit cli
 	rts
+
+&endint
+	php
+	sei
+	lda irqv
+	sta IRQV
+	lda irqv+1
+	sta IRQV+1
+	plp
+	rts
+
 newirq
 	; This is such a BAD HACK(tm)
 	;
@@ -248,15 +289,19 @@ poll
 retirq	
 	; flush last message to screen
 	jsr scr_flush
+
+	sei
+	jmp newirq2
+
 	; return into original program (as if from interrupt)
-	pla
-	tay
-	pla
-	tax
-	pla
-	; free lock
-	inc lock	; $ff -> $00
-	rti
+;	pla
+;	tay
+;	pla
+;	tax
+;	pla
+;	; free lock
+;	inc lock	; $ff -> $00
+;	rti
 
 error
 	ldy #ERR_DEVICE
@@ -541,6 +586,7 @@ e474
 
 
         .)
+#endif
 
 	.)
 
