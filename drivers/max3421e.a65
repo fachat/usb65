@@ -91,9 +91,6 @@ retries	.word 0
 
 ; check
 &max3421_init .(
-	lda #"M"
-	jsr $ffd2
-
 	DMSG("MAX3421 INIT")
         ; can't really detect HW for now
 
@@ -110,8 +107,8 @@ retries	.word 0
 
 	; wait for oscillator (chip reset stops it, need to wait for coming up)
 l0	rreg(rUSBIRQ)
-sta $8000+999
-inc $8000+998
+;sta $8000+999
+;inc $8000+998
 	and #bmOSCOKIRQ
 	beq l0
 
@@ -139,16 +136,12 @@ err	rts
 	bmi check
 
 	rreg(rHIRQ)
-sta $8027+80
 	and #bmCONDETIRQ
 	beq nochange
 DMSG("CONDETIRQ")
 check
 	lda #bmCONDETIRQ
 	wrac(rHIRQ)		; clear interrupt bit, just in case
-#ifdef DEBUG_HW
-	inc $8027+40
-#endif
 
 	; only called when changed, so ok to change LOWSPEED bit
 	; with this call
@@ -224,9 +217,6 @@ setspeed
 
 	; clear connect IRQ, as may be set by changing LOWSPEED
 	wreg(rHIRQ, bmCONDETIRQ)
-#ifdef DEBUG_HW
-	inc $8025+40
-#endif
 	;lda #<-1
 	;sta polled
 	rts
@@ -234,7 +224,7 @@ setspeed
 
 ; set params from the HOST_CTRL_* struct
 set_params .(
-#ifdef DEBUG_HW
+#if 0 //def DEBUG_HW
 	lda #"/"
 	jsr printc
 #endif
@@ -708,7 +698,7 @@ l0
 
 ; send a setup packet
 sendsetup .(
-#ifdef DEBUG_HW
+#if 0 //def DEBUG_HW
 lda #"S"
 jsr printc
 #endif
@@ -721,7 +711,7 @@ jsr printc
         ldy #HOST_CTRL_SETUP
 c1
         lda (ctrlptr),y
-#ifdef DEBUG_HW
+#if 0 //def DEBUG_HW
 	pha
         jsr hexout
 	pla
@@ -796,8 +786,8 @@ queryusbdevice .(
 
 	; check bus status
 	rreg(rHRSL)
-inc $8027+80
-sta $8026+80
+;inc $8027+80
+;sta $8026+80
 	and #bmJSTATUS + bmKSTATUS	; if both are zero
 	beq nodevice
 	lsr				; div by 2, so is $00/20/40/60, but never neg
@@ -819,7 +809,7 @@ isfullspeed
 	pha
 	; clear connect IRQ, as may be set by changing LOWSPEED or SAMPLEBUS
 	wreg(rHIRQ, bmCONDETIRQ)
-#ifdef DEBUG_HW
+#if 0 //def DEBUG_HW
 	inc $8026+40
 #endif
 	pla

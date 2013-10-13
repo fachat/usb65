@@ -19,7 +19,7 @@ FILES=$(COMMON_FILES) $(DRIVER_FILES)
 #XA=xa -R -U -c -bt 1023 -bz 17 -XC -XMASM -I../../common -I../../drivers
 #LINK=reloc65 -bt 1023 -bz 17 -X -v
 XA=xa -R -U -c -bt 1023 -bz 66 -XC -XMASM -I../../common -I../../drivers
-XAX=xa -R -U -c -bt 24576 -bz 66 -XC -XMASM -I../../common -I../../drivers
+XAX=xa -R -U -c -bt 24576 -bz 192 -XC -XMASM -I../../common -I../../drivers
 LINK=reloc65 -bt 1023 -bz 66 -X -v
 LINKX=reloc65 -X -v
 

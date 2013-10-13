@@ -143,13 +143,13 @@ tomove
 
 ; all pointers are used only by TAPE code
 ; print routine pointer
-ZPRINTPTR	.word 0		;=$b1
+ZPRINTPTR	=$b1
 ; device driver pointer
-ZUDEVPTR1	.word 0		;=$b6
+ZUDEVPTR1	=$b7
 ; general pointer within USB code
-ptr		.word 0		;=$b8
+ptr		=$b9
 ; debug code pointer (to save inline string address)
-dbg_ptr		.word 0		;=$c0
+dbg_ptr		=$bb
 
 	.text
 
@@ -222,8 +222,10 @@ lock	.byt 0
 	plp
 	rts
 
+	;-------------------------------
+	; new interrupt routine
 newirq
-	; This is such a BAD HACK(tm)
+	; The first part is such a BAD HACK(tm)
 	;
 	; After IEC load, the kernal calls F92B, assumingly to check
 	; the RUN/STOP key a last time. But starting from F92E it checks
@@ -247,6 +249,7 @@ newirq
 hack	lda #$34
 	sta $0105,x
 nohack
+	;-------------------------------
 	; debug output
 #ifdef DEBUG
 	inc DBGBASE+0
@@ -257,11 +260,16 @@ nohack
 	lda $e840
 	sta DBGBASE+5
 #endif
+	;-------------------------------
+	; protect IEEE488 
 	lda $e840
 	and #$c1	; NRFDin, NDACin, DAVin
 	cmp #$c1	; active? then do not poll, as we might interfere with IEEE488 timing
 	bne nopoll
 	
+	;-------------------------------
+	; poll the USB bus
+
 	; no race condition, we can safely assume to not be interrupted (on single-cpu)
 	lda lock
 	bpl poll
@@ -291,17 +299,16 @@ retirq
 	jsr scr_flush
 
 	sei
-	jmp newirq2
 
 	; return into original program (as if from interrupt)
-;	pla
-;	tay
-;	pla
-;	tax
-;	pla
-;	; free lock
-;	inc lock	; $ff -> $00
-;	rti
+	pla
+	tay
+	pla
+	tax
+	pla
+	; free lock
+	inc lock	; $ff -> $00
+	rti
 
 error
 	ldy #ERR_DEVICE
@@ -362,7 +369,14 @@ usb_kbd_rx_key_cb .(
 
 	and #$07
 	beq nom
-	pha 
+	cmp #1		; mouse button 1
+	bne nocr
+
+	lda #13		; output CR for mouse button 1
+	jsr printc2
+	jmp nom
+
+nocr	pha 
 	lda #"M"
 	jsr printc2
 	pla
