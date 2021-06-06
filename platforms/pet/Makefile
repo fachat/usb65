@@ -88,4 +88,10 @@ clean:
 	rm -f CSAUSBDRV CSAUSBDRV.l
 	rm -f PETUSBDRV PETUSBDRV.l
 	rm -f PETUSBDRV_CBMUSB PETUSBDRV_CBMUSB.l
+	rm -f PETUSBDRV_CBMUSB_d PETUSBDRV_CBMUSB_d.o65 PETUSBDRV_CBMUSB_d.l 
+	rm -f PETUSBDRV_CBMUSB_l PETUSBDRV_CBMUSB_l.o65 PETUSBDRV_CBMUSB_l.l 
+	rm -f upet_usb upet_usb.l upet_usb.o65 upet_usb.lst
+	rm -f upet_usbdrv upet_usbdrv.l upet_usbdrv.lst
+	rm -f upet_usbdrv_d upet_usbdrv_d.o65 upet_usbdrv_d.l 
+	rm -f upet_usbdrv_l upet_usbdrv_l.o65 upet_usbdrv_l.l 
 
