@@ -147,6 +147,10 @@
 #include "cbmspi.i65"
 #include "cbmusb_pet.a65"
 #endif
+#ifdef UPET_SPI
+#include "upetspi.i65"
+#include "upetspi.a65"
+#endif
 
 #include "max3421e.a65"
 #endif

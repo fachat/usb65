@@ -145,7 +145,7 @@ tomove
 ; print routine pointer
 ZPRINTPTR	=$b1
 ; device driver pointer
-ZUDEVPTR1	=$b7
+ZUDEVPTR1	=$b7; 	$ce	; $b7 (conflict with editor ROM project - escape codes)
 ; general pointer within USB code
 ptr		=$b9
 ; debug code pointer (to save inline string address)
@@ -162,14 +162,14 @@ SCRBASE		=$8000
 
 IRQV	=$0090
 
-	jmp usb_init
-	jmp print
-	jmp scr_flush
-	jmp prversion
-	jmp start2
-	jmp init_scr
-	jmp startint
-	jmp endint
+	jmp usb_init		; +0
+	jmp print		; +3
+	jmp scr_flush		; +6
+	jmp prversion		; +9
+	jmp start2		; +12
+	jmp init_scr		; +15
+	jmp startint		; +18
+	jmp endint		; +21
 
 /* current screen column for debug, so we can enter cr when appropriate */
 
