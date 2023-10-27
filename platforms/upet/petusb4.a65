@@ -24,7 +24,7 @@
 /* globals */
 
 printc=$ffd2
-MAX3421E_EnMask=$04
+MAX3421E_EnMask=SPIADDR
 
 	.(
 
