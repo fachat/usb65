@@ -28,10 +28,11 @@
 ;	SPIPIA				$e810
 ;
 
+	.(
+
 #include "via6522.i65"
 #include "pia6521.i65"
 
-	.(
 SPIVIA		=$e840
 SPIPIA		=$e810
 
@@ -43,8 +44,12 @@ SPI_ANTIBEEP	=%10000000		; PIA PA7
 
 SPI_CLK		=100			; 2*(N+2) = 24us per SPI bit for T2
 
+&spi_wra	=spi_rxtx
+&spi_enable	=spi_select
+&spi_disable	=spi_deselect
+
 ; init the SPI code
-&cbmspi_init .(
+&spi_init .(
 
 lda #"S"
 jsr $ffd2
@@ -162,7 +167,7 @@ delay	inx
 	.)
 
 ; select the device
-&cbmspi_select .(	
+spi_select .(	
 	lda SPIVIA+VIA_DRB	
 	and #255-SPI_SEL
 	sta SPIVIA+VIA_DRB
@@ -170,16 +175,16 @@ delay	inx
 	.)
 
 ; deselect the device
-&cbmspi_deselect .(
+spi_deselect .(
 	lda SPIVIA+VIA_DRB
 	ora #SPI_SEL
 	sta SPIVIA+VIA_DRB
 	rts
 	;lda #$ff
-	;jmp cbmspi_rxtx
+	;jmp spi_rxtx
 	.)
 	; fall-through
-&cbmspi_rxtx .(
+spi_rxtx .(
 	sta SPIVIA+VIA_SR
 	; wait to finish
 	lda #%00000100

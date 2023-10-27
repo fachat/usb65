@@ -109,28 +109,12 @@
  *      on error, AC has error condition
  */
 
-#ifdef SL811_HOST
-#define	usb_host_init		sl811h_init
-#define	usb_host_polldev	sl811h_polldev
-#define	usb_host_devinit	sl811h_devinit
-#define	usb_host_reset		sl811h_reset
-#define	usb_host_control	sl811h_control
-#define	usb_host_get		sl811h_get
-#endif
-
-
-#ifdef MAX3421_HOST
-#define	usb_host_init		max3421_init
-#define	usb_host_polldev	max3421_polldev
-#define	usb_host_devinit	max3421_devinit
-#define	usb_host_reset		max3421_reset
-#define	usb_host_control	max3421_control
-#define	usb_host_get		max3421_get
-#endif
-
 	.(
 
+
 #define	MAX_PACKET	$f0
+
+#if 0	/******************************************************/
 
 #ifdef SL811_HOST
 #define SL811_HOST      $ec98
@@ -154,12 +138,26 @@
 
 #include "max3421e.a65"
 #endif
+#endif 	
+
+/******************************************************/
+
+#include "debug.a65"
+#include "usb.i65"
+#include "hostmsg.i65"
+
+
+
+	.zero
+ptr	.word 0
+	.text
 
 #include "hub.a65"
 #include "usbgen.a65"
 #include "kbd.a65"
 #include "mouse.a65"
 #include "detect.a65"
+
 
 
 &usb_register_hub_device = hub_register_device
@@ -358,7 +356,7 @@ dnext	inc curslot
 	cpy #MAX_DEV
 	bne dl
 	jmp usb_init
-jmpl	jmp (ptr)
+;jmpl	jmp (ptr)
 	.)
 
 polldevices .(

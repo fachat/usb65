@@ -62,11 +62,18 @@
 #include "usb.i65"
 #include "sl811_host.i65"
 
+#include "hostmsg.i65"
+#include "debug.i65"
+
 	.(
 
 	.zero
 
-ctrlptr	=ZUDEVPTR1
+;ctrlptr	=ZUDEVPTR1
+;#define	ctrlptr	ZUDEVPTR1
+ctrlptr	.word 0
+
+	;.importzp ZUDEVPTR1
 
 	.bss
 
@@ -86,7 +93,7 @@ retries	.word 0
 ; initialization
 
 ; check
-&sl811h_init .(
+&usb_host_init .(
 	jsr getversion
 	bcs err
 	lda #0
@@ -96,7 +103,7 @@ retries	.word 0
 err	rts
 	.)
 
-&sl811h_polldev .(
+&usb_host_polldev .(
 	LDH_INTSTAT
 	and #INT_PRESENT
 	beq found
@@ -109,7 +116,7 @@ found	clc
 	.)
 
 	; init the sl811
-&sl811h_devinit .(
+&usb_host_devinit .(
 	jsr usbreset
 
 	jsr clearirq
@@ -147,7 +154,7 @@ fullspeed
 	rts
 	.)
 
-&sl811h_reset .(
+&usb_host_reset .(
 
 	tax
 	bne init_full
@@ -270,7 +277,7 @@ lenerr	lda #ERR_PKLEN
 	rts
 	.)
 
-&sl811h_get .(
+&usb_host_get .(
 	sta ctrlptr
 	sty ctrlptr+1
 
@@ -283,7 +290,7 @@ lenerr	lda #ERR_PKLEN
 end	rts
 	.)
 
-&sl811h_control .(
+&usb_host_control .(
 	sta ctrlptr
 	sty ctrlptr+1
 	; copy ctrl msg to sl811h buffer

@@ -1,0 +1,67 @@
+
+	.(
+
+#include "spi65b.i65"
+
+
+&spi_init .(
+	lda #$04	; ECE external clock enable, SPI mode 0
+	;lda #$07	; ECE external clock enable, SPI mode 3
+	sta SPICR
+	lda #0
+	sta SPIDIV
+	lda #$0f
+	sta SPIIERB	; no interrupts, no device selected
+	clc
+	rts
+	.)
+
+&spi_enable .(
+	eor #$ff
+        and SPISSRB
+        sta SPISSRB
+	rts
+	.)
+
+&spi_disable .(
+        ora SPISSRB
+        sta SPISSRB
+	rts
+	.)
+
+&spi_wra .(
+        sta SPIDR
+l_      bit SPISR
+        bpl l_
+        lda SPIDR
+	rts
+        .)			
+
+// does not overwrite AC
+&spi_wraNR .(
+        sta SPIDR
+l_      bit SPISR
+        bpl l_
+        bit SPIDR
+	rts
+        .)
+
+
+&spi_checkints .(
+        lda SPIISRB
+        and #$f0
+	rts
+	.)
+
+// using the same bit as the enable, so parameter is shifted
+&spi_checkint .(
+	asl
+	asl
+	asl
+	asl
+        and SPIISRB
+	rts
+	.)
+
+	.)
+

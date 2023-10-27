@@ -14,8 +14,13 @@ SPIDATA		=$e809
 SPIPEEK		=$e80a
 
 
+&spi_wra=spi_rxtx
+&spi_disable=spi_deselect
+&spi_enable=spi_select
+
+
 ; init the SPI code
-&upetspi_init .(
+&spi_init .(
 
 	lda #0
 	sta SPICTRL
@@ -26,20 +31,20 @@ SPIPEEK		=$e80a
 	.)
 
 ; select the device
-&upetspi_select .(	
+spi_select .(	
 	;lda #SPI_3421
 	sta SPICTRL
 	rts
 	.)
 
 ; deselect the device
-&upetspi_deselect .(
+spi_deselect .(
 	lda #0
 	sta SPICTRL
 	rts
 	.)
 
-&upetspi_rxtx .(
+spi_rxtx .(
 	sta SPIDATA
 rd	bit SPICTRL
 	bmi rd
@@ -48,13 +53,12 @@ rd	bit SPICTRL
 	rts
 	.)
 
-&upetspi_tx .(
+&spi_tx .(
 	bit SPICTRL
-	bvs upetspi_tx
+	bvs spi_tx
 	sta SPIDATA
 	rts
 	.)
-
 
 	.)
 

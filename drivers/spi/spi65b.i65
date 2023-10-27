@@ -1,0 +1,19 @@
+
+#ifndef SPI65B_I65
+#define SPI65B_I65
+
+ETHSEL          =       $01
+
+SPIBASE		=  	$e8a0
+
+SPIDR           =      (SPIBASE)   	; SPI data port
+SPISR           =      (SPIBASE+1)   	; SPI status
+SPICR           =      (SPIBASE+1)   	; SPI control
+SPIDIV          =      (SPIBASE+2)   	; SPI SCLK divisor (NOTE - lower 4 bits only)
+SPIISRB         =      (SPIBASE+2)   	; SPI Interrupt status register (upper 4 bits)
+SPISSRB         =      (SPIBASE+3)   	; SPI Slave Select register (lower 4 bits)
+SPIIERB         =      (SPIBASE+3)   	; SPI Interrupt enable register (upper 4 bits)
+
+
+#endif
+

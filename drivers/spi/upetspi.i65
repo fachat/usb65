@@ -28,19 +28,6 @@
 #define	SPI_SD		%00000011
 #define	SPI_ETH		%00000100
 
-#define	spi_init		\
-	upetspi_init
-
-#define	spi_enable(x)		\
-	lda #SPI_USB		:\
-	jsr upetspi_select
-
-#define	spi_disable(x)		\
-	jsr upetspi_deselect
-
-#define	spi_wra()		\
-	jsr upetspi_rxtx
-
 
 #endif
 

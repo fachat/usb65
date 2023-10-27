@@ -58,12 +58,16 @@
  *	control struct
  */
 
-MAX3421E_EnMask = 0x04
+;MAX3421E_EnMask = 0x04
 
 #include "usb.i65"
 #include "max3421e.i65"
+#include "hostmsg.i65"
+#include "debug.i65"
 
 	.(
+
+	.importzp MAX3421E_EnMask
 
 	.zero
 ctrlptr	.word 0
@@ -90,7 +94,7 @@ retries	.word 0
 ; initialization
 
 ; check
-&max3421_init .(
+&usb_host_init .(
 	DMSG("MAX3421 INIT")
         ; can't really detect HW for now
 
@@ -128,7 +132,7 @@ l0	rreg(rUSBIRQ)
 err	rts
 	.)
 
-&max3421_polldev .(
+&usb_host_polldev .(
 #ifdef DEBUG_HW
 	inc $8027
 #endif
@@ -157,7 +161,7 @@ found	clc
 	.)
 
 	; init the chip
-&max3421_devinit .(
+&usb_host_devinit .(
 	DMSG("MAX3421 DEVINIT")
 	jsr usbreset
 
@@ -187,7 +191,7 @@ device
 	rts
 	.)
 
-&max3421_reset .(
+&usb_host_reset .(
 	DMSG("MAX3421 RESET")
 
 	sta rootspd	; store root speed
@@ -299,7 +303,7 @@ ptr_to_buffer .(
 	rts
 	.)
 
-&max3421_get .(
+&usb_host_get .(
 	sta ctrlptr
 	sty ctrlptr+1
 
@@ -469,7 +473,7 @@ wrtog	sta (ctrlptr),y
 	rts
 	.)
 
-&max3421_control .(
+&usb_host_control .(
 	DMSG("CONTROL")
 	sta ctrlptr
 	sty ctrlptr+1

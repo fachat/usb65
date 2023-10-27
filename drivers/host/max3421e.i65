@@ -24,11 +24,16 @@
 #ifndef MAX3421_H
 #define	MAX3421_H
 
+/* note: using the lowbyte avoid "cutting word relocation ..." warnings, as MAX3421E_EnMask is undefined */
 #define	max3421e_enable()	\
-	spi_enable(MAX3421E_EnMask)
+	lda #<MAX3421E_EnMask	:\
+	jsr spi_enable
 
 #define	max3421e_disable()	\
-	spi_disable(MAX3421E_EnMask)
+	jsr spi_disable
+
+#define	spi_wra()		\
+	jsr spi_wra
 
 #if 0
 
