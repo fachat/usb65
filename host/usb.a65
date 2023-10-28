@@ -142,6 +142,8 @@
 
 /******************************************************/
 
+#define	DEBUG
+
 #include "debug.a65"
 #include "usb.i65"
 #include "hostmsg.i65"
@@ -259,6 +261,7 @@ i1	sta devnum,y	; illegal device num
 
 	jsr hub_init	; init hub structures
 
+	DEXIT("USB_HOST INIT")
 	jsr usb_host_init	; init hardware
 	bcs err
 	lda #$80
@@ -267,6 +270,7 @@ i1	sta devnum,y	; illegal device num
 err	lda #$00
 	sta state
 	lda #ERR_NO_HW
+	DEXIT("USB_INIT")
 	rts
 	.)
 

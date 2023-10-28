@@ -26,6 +26,7 @@
 printc=$ffd2
 MAX3421E_EnMask=SPIADDR
 
+
 	.(
 
 #include "hostmsg.i65"
@@ -37,8 +38,12 @@ ldaddr
 	.byt $9e, "1040"
 	.byt 0
 eol	.word 0
-	.dsb 1040-(*-ldaddr), $00
+	.dsb 1040-ldaddr-(*-ldaddr), $00
 	jmp start
+
+	.)
+#include "debug.a65"
+	.(
 
 irqvec  =$90
 irqsave .word 0
@@ -51,15 +56,14 @@ ZUDEVPTR1	.word 0		;=$1f
 ; general pointer within USB code
 ptr		.word 0		;=$11
 ; debug code pointer (to save inline string address)
-dbg_ptr		.word 0		;=$b1
+&dbg_ptr		.word 0		;=$b1
 
 	.text
 
 /* current screen column for debug, so we can enter cr when appropriate */
-#define	SCREENCOL	$c6
+&SCREENCOL	=$c6
 
 #include "hostmsg.a65"
-#include "debug.a65"
 
 iniirq  .(
         lda irqvec

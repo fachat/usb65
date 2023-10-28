@@ -21,10 +21,10 @@ ${HOST_O65}:
 	make -C ../../host
 
 %.o65: %.a65
-	xa -R -U -I../../common -I../../host -DSPIADDR=2 -o $@ $<
+	xa -R -U -bt 1023 -I../../common -I../../host -DSPIADDR=2 -o $@ $<
 
 ${MAIN}.o65: ${MAIN_O65} ${DRIVER_O65} ${HOST_O65}
-	ldo65 -G -o $@ $^
+	ldo65 -G -v -v -o $@ $^
 
 ${MAIN}: ${MAIN}.o65
 	reloc65 -X -bt 1023 -bz 66 -o $@ $<

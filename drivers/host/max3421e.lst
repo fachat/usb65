@@ -1,0 +1,1163 @@
+
+max3421e.a65
+
+
+   61 T:1000                                    ;MAX3421E_EnMask = 0x04
+
+usb.i65
+
+
+   27 T:1000                                    ; ---------------------------------------------------------------------------------------
+   28 T:1000                                    ; usbdev_init parameter
+
+   33 T:1000                                    ; ---------------------------------------------------------------------------------------
+   34 T:1000                                    ; USB setup packet
+
+   44 T:1000                                    ; ---------------------------------------------------------------------------------------
+   45 T:1000                                    ; USB host control structure
+   46 T:1000                                    ; interface to the various usb_* functions
+
+   60 T:1000                                    ; ---------------------------------------------------------------------------------------
+   61 T:1000                                    ; input value to the poll routine when carry is set
+
+   65 T:1000                                    ; ---------------------------------------------------------------------------------------
+   66 T:1000                                    ; return value from usb_cb_detected on success (CLC)
+
+   71 T:1000                                    ; ---------------------------------------------------------------------------------------
+   72 T:1000                                    ; poll register struct
+   73 T:1000                                    ; used to register an endpoint poll callback
+
+   80 T:1000                                    ; ---------------------------------------------------------------------------------------
+   81 T:1000                                    ; USB standard values
+
+   83 T:1000                                    ; PID Values
+
+max3421e.i65
+
+
+hostmsg.i65
+
+
+debug.i65
+
+
+max3421e.a65
+
+
+   70 T:1000                                     .( 
+
+   72 T:1000                                     .importzp MAX3421E_EnMask
+
+   74 T:1000                                     .zero 
+   75 Z:0004  00 00                    ctrlptr   .word 0
+   76 Z:0006  00 00                    dataptr   .word 0
+   77 Z:0008                                     .data 
+
+   79 D:0400  00                       rootspd   .byt 0           ; speed (low/full) of attached device (e.g. root hub)
+   80 D:0401  00                       polled    .byt 0           ; when set, device is present
+
+   82 D:0402  00                       len       .byt 0           ; length of a (requested IN) packet
+   83 D:0403  00                       endpt     .byt 0
+   84 D:0404  00                       flags     .byt 0
+   85 D:0405  00                       maxpklen  .byt 0           ; maximum allowed size for packet
+   86 D:0406  00                       cnt       .byt 0
+   87 D:0407  00                       rcnt      .byt 0
+   88 D:0408  00                       bcnt      .byt 0           ; byt count up to len for packet transfer
+
+   93 D:0409                                     .text 
+
+   95 T:1000                                    ;-----------------------------------------------------------
+   96 T:1000                                    ; initialization
+
+   98 T:1000                                    ; check
+   99 T:1000                           usb_host_init .( 
+  100 T:1000                                     .( 
+  100 T:1000  20 09 04                           jsr __l
+  100 T:1003                                     .data 
+  100 D:0409  20 00 00                 __l       jsr dbg_msg
+  100 D:040c  4d 41 58 33 34 32 31 ...           .asc "MAX3421 INIT",0
+  100 D:0419  60                                 rts 
+  100 D:041a                                     .text 
+  100 T:1003                                     .) 
+  101 T:1003                                    ; can't really detect HW for now
+
+  103 T:1003  20 00 00                           jsr spi_init
+
+  105 T:1006                                    ; SPI = full duplex, INTLEVEL = negative level
+  106 T:1006                                    ; should set GPX if used, is not used here
+  107 T:1006  a9 00                              lda #<MAX3421E_EnMask
+  107 T:1008  20 00 00                           jsr spi_enable
+  107 T:100b  a9 8a                              lda #((17<<3))'0f$02
+  107 T:100d  20 00 00                           jsr spi_wra
+  107 T:1010  a9 18                              lda #($10+$08)
+  107 T:1012  20 00 00                           jsr spi_wra
+  107 T:1015  20 00 00                           jsr spi_disable
+
+  109 T:1018                                    ; reset (leaves FDUPSPI and INTLEVEL as they are)
+  110 T:1018  a9 00                              lda #<MAX3421E_EnMask
+  110 T:101a  20 00 00                           jsr spi_enable
+  110 T:101d  a9 7a                              lda #(15<<3)'0f$02
+  110 T:101f  20 00 00                           jsr spi_wra
+  110 T:1022  a9 20                              lda #($20)
+  110 T:1024  20 00 00                           jsr spi_wra
+  110 T:1027  20 00 00                           jsr spi_disable
+  111 T:102a                                    ; deassert reset
+  112 T:102a  a9 00                              lda #<MAX3421E_EnMask
+  112 T:102c  20 00 00                           jsr spi_enable
+  112 T:102f  a9 7a                              lda #(15<<3)'0f$02
+  112 T:1031  20 00 00                           jsr spi_wra
+  112 T:1034  a9 00                              lda #(0)
+  112 T:1036  20 00 00                           jsr spi_wra
+  112 T:1039  20 00 00                           jsr spi_disable
+
+  114 T:103c                                    ; wait for oscillator (chip reset stops it, need to wait for coming up)
+  115 T:103c  a9 00                    l0        lda #<MAX3421E_EnMask
+  115 T:103e  20 00 00                           jsr spi_enable
+  115 T:1041  a9 68                              lda #13<<3&&$00
+  115 T:1043  20 00 00                           jsr spi_wra
+  115 T:1046  20 00 00                           jsr spi_wra
+  115 T:1049  48                                 pha 
+  115 T:104a  20 00 00                           jsr spi_disable
+  115 T:104d  68                                 pla 
+  116 T:104e                                    ;sta $8000+999
+  117 T:104e                                    ;inc $8000+998
+  118 T:104e  29 01                              and #$01
+  119 T:1050  f0 ea                              beq l0
+
+  121 T:1052                                    ; set into HOST mode
+  122 T:1052                                    ; weak pull down on D+ and D- for SAMPLEBUS to work
+  123 T:1052  a9 00                              lda #<MAX3421E_EnMask
+  123 T:1054  20 00 00                           jsr spi_enable
+  123 T:1057  a9 da                              lda #(27<<3)'0f$02
+  123 T:1059  20 00 00                           jsr spi_wra
+  123 T:105c  a9 c1                              lda #($01+$80+$40)
+  123 T:105e  20 00 00                           jsr spi_wra
+  123 T:1061  20 00 00                           jsr spi_disable
+
+  125 T:1064                                    ; success
+  126 T:1064  18                                 clc 
+
+  128 T:1065                                    ; Note: we don't use interrupts, so we don't need to enable
+  129 T:1065                                    ; them here - we just poll them in polldev
+  130 T:1065                                     .( 
+  130 T:1065  20 1a 04                           jsr __l
+  130 T:1068                                     .data 
+  130 D:041a  20 00 00                 __l       jsr dbg_msg
+  130 D:041d  4d 41 58 33 34 32 31 ...           .asc "MAX3421 INIT DONE",0
+  130 D:042f  60                                 rts 
+  130 D:0430                                     .text 
+  130 T:1068                                     .) 
+
+  132 T:1068  a9 ff                              lda #<-1
+  133 T:106a  8d 01 04                           sta polled             ; trigger initial device detection check
+  134 T:106d  60                       err       rts 
+  135 T:106e                                     .) 
+
+  137 T:106e                           usb_host_polldev .( 
+
+  141 T:106e  ad 01 04                           lda polled
+  142 T:1071  30 19                              bmi check
+
+  144 T:1073  a9 00                              lda #<MAX3421E_EnMask
+  144 T:1075  20 00 00                           jsr spi_enable
+  144 T:1078  a9 c8                              lda #25<<3&&$00
+  144 T:107a  20 00 00                           jsr spi_wra
+  144 T:107d  20 00 00                           jsr spi_wra
+  144 T:1080  48                                 pha 
+  144 T:1081  20 00 00                           jsr spi_disable
+  144 T:1084  68                                 pla 
+  145 T:1085  29 20                              and #$20
+  146 T:1087  f0 1c                              beq nochange
+  147 T:1089                                     .( 
+  147 T:1089  20 30 04                           jsr __l
+  147 T:108c                                     .data 
+  147 D:0430  20 00 00                 __l       jsr dbg_msg
+  147 D:0433  43 4f 4e 44 45 54 49 ...           .asc "CONDETIRQ",0
+  147 D:043d  60                                 rts 
+  147 D:043e                                     .text 
+  147 T:108c                                     .) 
+  148 T:108c                           check     
+  149 T:108c  a9 20                              lda #$20
+  150 T:108e  48                                 pha 
+  150 T:108f  a9 00                              lda #<MAX3421E_EnMask
+  150 T:1091  20 00 00                           jsr spi_enable
+  150 T:1094  a9 ca                              lda #(25<<3)'0f$02
+  150 T:1096  20 00 00                           jsr spi_wra
+  150 T:1099  68                                 pla 
+  150 T:109a  20 00 00                           jsr spi_wra
+  150 T:109d  20 00 00                           jsr spi_disable                ; clear interrupt bit, just in case
+
+  152 T:10a0                                    ; only called when changed, so ok to change LOWSPEED bit
+  153 T:10a0                                    ; with this call
+  154 T:10a0  20 d6 14                           jsr queryusbdevice
+  155 T:10a3  90 05                              bcc notfnd
+  156 T:10a5                           nochange  
+  157 T:10a5  ad 01 04                           lda polled             ; set in queryusbdevice
+  158 T:10a8  d0 02                              bne found
+  159 T:10aa  38                       notfnd    sec 
+  160 T:10ab  60                                 rts 
+  161 T:10ac  18                       found     clc 
+  162 T:10ad  60                                 rts 
+  163 T:10ae                                     .) 
+
+  165 T:10ae                                    ; init the chip
+  166 T:10ae                           usb_host_devinit .( 
+  167 T:10ae                                     .( 
+  167 T:10ae  20 3e 04                           jsr __l
+  167 T:10b1                                     .data 
+  167 D:043e  20 00 00                 __l       jsr dbg_msg
+  167 D:0441  4d 41 58 33 34 32 31 ...           .asc "MAX3421 DEVINIT",0
+  167 D:0451  60                                 rts 
+  167 D:0452                                     .text 
+  167 T:10b1                                     .) 
+  168 T:10b1  20 44 15                           jsr usbreset
+
+  170 T:10b4                                    ;jsr clearirq
+
+  172 T:10b4  a9 0a                              lda #10
+  173 T:10b6  20 00 00                           jsr pause
+
+  175 T:10b9  20 d6 14                           jsr queryusbdevice
+  176 T:10bc                                     .( 
+  176 T:10bc  20 52 04                           jsr __l
+  176 T:10bf                                     .data 
+  176 D:0452  20 00 00                 __l       jsr dbg_msg
+  176 D:0455  4f 55 54 5f 4f 46 5f ...           .asc "OUT_OF_QUERY",0
+  176 D:0462  60                                 rts 
+  176 D:0463                                     .text 
+  176 T:10bf                                     .) 
+  177 T:10bf  b0 07                              bcs device
+
+  179 T:10c1                                    ;jsr clearirq
+  180 T:10c1  a9 00                    nodev     lda #0          ; no device found error condition
+  181 T:10c3  38                                 sec                    ; error
+  182 T:10c4                                     .( 
+  182 T:10c4  20 63 04                           jsr __l
+  182 T:10c7                                     .data 
+  182 D:0463  20 00 00                 __l       jsr dbg_msg
+  182 D:0466  4e 4f 44 45 56 00                  .asc "NODEV",0
+  182 D:046c  60                                 rts 
+  182 D:046d                                     .text 
+  182 T:10c7                                     .) 
+  183 T:10c7  60                                 rts 
+  184 T:10c8                           device    
+
+  186 T:10c8  a9 01                              lda #1
+  187 T:10ca  20 00 00                           jsr pause
+  188 T:10cd  20 d6 14                           jsr queryusbdevice
+  189 T:10d0  90 ef                              bcc nodev
+
+  191 T:10d2  18                                 clc 
+  192 T:10d3                                     .( 
+  192 T:10d3  20 6d 04                           jsr __l
+  192 T:10d6                                     .data 
+  192 D:046d  20 00 00                 __l       jsr dbg_msg
+  192 D:0470  44 45 56 00                        .asc "DEV",0
+  192 D:0474  60                                 rts 
+  192 D:0475                                     .text 
+  192 T:10d6                                     .) 
+  193 T:10d6  60                                 rts 
+  194 T:10d7                                     .) 
+
+  196 T:10d7                           usb_host_reset .( 
+  197 T:10d7                                     .( 
+  197 T:10d7  20 75 04                           jsr __l
+  197 T:10da                                     .data 
+  197 D:0475  20 00 00                 __l       jsr dbg_msg
+  197 D:0478  4d 41 58 33 34 32 31 ...           .asc "MAX3421 RESET",0
+  197 D:0486  60                                 rts 
+  197 D:0487                                     .text 
+  197 T:10da                                     .) 
+
+  199 T:10da  8d 00 04                           sta rootspd             ; store root speed
+
+  201 T:10dd  aa                                 tax 
+  202 T:10de  d0 17                              bne init_full
+
+  204 T:10e0                                    ; init chip for low speed device
+  205 T:10e0                           init_low  
+  206 T:10e0  a9 00                              lda #<MAX3421E_EnMask
+  206 T:10e2  20 00 00                           jsr spi_enable
+  206 T:10e5  a9 d8                              lda #27<<3&&$00
+  206 T:10e7  20 00 00                           jsr spi_wra
+  206 T:10ea  20 00 00                           jsr spi_wra
+  206 T:10ed  48                                 pha 
+  206 T:10ee  20 00 00                           jsr spi_disable
+  206 T:10f1  68                                 pla 
+  207 T:10f2  09 02                              ora #$02
+
+  209 T:10f4  4c 0b 11                           jmp setspeed
+
+  211 T:10f7                                    ; init chip for full speed device
+  212 T:10f7                           init_full 
+  213 T:10f7  a9 00                              lda #<MAX3421E_EnMask
+  213 T:10f9  20 00 00                           jsr spi_enable
+  213 T:10fc  a9 d8                              lda #27<<3&&$00
+  213 T:10fe  20 00 00                           jsr spi_wra
+  213 T:1101  20 00 00                           jsr spi_wra
+  213 T:1104  48                                 pha 
+  213 T:1105  20 00 00                           jsr spi_disable
+  213 T:1108  68                                 pla 
+  214 T:1109  29 fd                              and #255-$02
+  215 T:110b                           setspeed  
+  216 T:110b  48                                 pha 
+  216 T:110c  a9 00                              lda #<MAX3421E_EnMask
+  216 T:110e  20 00 00                           jsr spi_enable
+  216 T:1111  a9 da                              lda #(27<<3)'0f$02
+  216 T:1113  20 00 00                           jsr spi_wra
+  216 T:1116  68                                 pla 
+  216 T:1117  20 00 00                           jsr spi_wra
+  216 T:111a  20 00 00                           jsr spi_disable
+
+  218 T:111d                                    ; set 0 as peripheral address for a start
+  219 T:111d  a9 00                              lda #<MAX3421E_EnMask
+  219 T:111f  20 00 00                           jsr spi_enable
+  219 T:1122  a9 e2                              lda #(28<<3)'0f$02
+  219 T:1124  20 00 00                           jsr spi_wra
+  219 T:1127  a9 00                              lda #(0)
+  219 T:1129  20 00 00                           jsr spi_wra
+  219 T:112c  20 00 00                           jsr spi_disable
+
+  221 T:112f                                    ;jsr usbreset ; reset attached device
+  222 T:112f  20 95 15                           jsr startsof
+
+  224 T:1132                                    ; clear connect IRQ, as may be set by changing LOWSPEED
+  225 T:1132  a9 00                              lda #<MAX3421E_EnMask
+  225 T:1134  20 00 00                           jsr spi_enable
+  225 T:1137  a9 ca                              lda #(25<<3)'0f$02
+  225 T:1139  20 00 00                           jsr spi_wra
+  225 T:113c  a9 20                              lda #($20)
+  225 T:113e  20 00 00                           jsr spi_wra
+  225 T:1141  20 00 00                           jsr spi_disable
+  226 T:1144                                    ;lda #<-1
+  227 T:1144                                    ;sta polled
+  228 T:1144  60                                 rts 
+  229 T:1145                                     .) 
+
+  231 T:1145                                    ; set params from the HOST_CTRL_* struct
+  232 T:1145                           set_params .( 
+
+  237 T:1145  a0 00                              ldy #0
+  238 T:1147  b1 04                              lda (ctrlptr),y
+
+  244 T:1149  48                                 pha 
+  244 T:114a  a9 00                              lda #<MAX3421E_EnMask
+  244 T:114c  20 00 00                           jsr spi_enable
+  244 T:114f  a9 e2                              lda #(28<<3)'0f$02
+  244 T:1151  20 00 00                           jsr spi_wra
+  244 T:1154  68                                 pla 
+  244 T:1155  20 00 00                           jsr spi_wra
+  244 T:1158  20 00 00                           jsr spi_disable
+  245 T:115b  c8                                 iny                    ; HOST_CTRL_ENDPOINT
+  246 T:115c  b1 04                              lda (ctrlptr),y
+  247 T:115e  8d 03 04                           sta endpt
+
+  252 T:1161  c8                                 iny                    ; HOST_CTRL_SPEED
+  253 T:1162  b1 04                              lda (ctrlptr),y
+  254 T:1164  20 90 14                           jsr set_pream
+
+  256 T:1167  c8                                 iny                    ; HOST_CTRL_FLAGS
+  257 T:1168  b1 04                              lda (ctrlptr),y
+  258 T:116a  8d 04 04                           sta flags
+
+  260 T:116d  c8                                 iny                    ; HOST_CTRL_MAXPKLEN low
+  261 T:116e  b1 04                              lda (ctrlptr),y
+  262 T:1170  8d 05 04                           sta maxpklen
+
+  268 T:1173  c9 41                              cmp #$41             ; we currently support only full speed, i.e. up to 64 byte
+  269 T:1175  b0 12                              bcs lenerr                ; equals or larger than $41, than error
+  270 T:1177  c8                                 iny                    ; HOST_CTRL_MAXPKLEN hi
+  271 T:1178  b1 04                              lda (ctrlptr),y
+  272 T:117a  d0 0d                              bne lenerr
+
+  274 T:117c  c8                                 iny                    ; HOST_CTRL_BUFLEN low
+  275 T:117d  b1 04                              lda (ctrlptr),y         ; buflen
+  276 T:117f                                    ;cmp #$41
+  277 T:117f                                    ;bcs lenerr  ; we currently support only up to $f0 byte transfers (max sl811h buffer)
+  278 T:117f  8d 02 04                           sta len
+
+  282 T:1182  c8                                 iny 
+  283 T:1183  b1 04                              lda (ctrlptr),y
+  284 T:1185  d0 02                              bne lenerr                ; we currently support only up to 64 byte transfers
+  285 T:1187  18                                 clc 
+  286 T:1188  60                                 rts 
+
+  289 T:1189  a9 f6                    lenerr    lda #<-10
+  290 T:118b                                     .( 
+  290 T:118b  20 87 04                           jsr __l
+  290 T:118e                                     .data 
+  290 D:0487  20 00 00                 __l       jsr dbg_exit
+  290 D:048a  53 45 54 5f 50 41 52 ...           .asc "SET_PARAMS X",0
+  290 D:0497  60                                 rts 
+  290 D:0498                                     .text 
+  290 T:118e                                     .) 
+  291 T:118e  38                                 sec 
+  292 T:118f  60                                 rts 
+  293 T:1190                                     .) 
+
+  295 T:1190                                    ; set ctrlptr from the control block
+  296 T:1190                           ptr_to_buffer .( 
+  297 T:1190  a0 08                              ldy #8             ; put buffer address into ctrlptr
+  298 T:1192  b1 04                              lda (ctrlptr),y
+  299 T:1194  48                                 pha 
+  300 T:1195  c8                                 iny 
+  301 T:1196  b1 04                              lda (ctrlptr),y
+  302 T:1198  85 07                              sta dataptr+1
+  303 T:119a  68                                 pla 
+  304 T:119b  85 06                              sta dataptr
+  305 T:119d  60                                 rts 
+  306 T:119e                                     .) 
+
+  308 T:119e                           usb_host_get .( 
+  309 T:119e  85 04                              sta ctrlptr
+  310 T:11a0  84 05                              sty ctrlptr+1
+
+  312 T:11a2                                    ; clear xfer done irq, just in case
+  313 T:11a2  a9 00                              lda #<MAX3421E_EnMask
+  313 T:11a4  20 00 00                           jsr spi_enable
+  313 T:11a7  a9 ca                              lda #(25<<3)'0f$02
+  313 T:11a9  20 00 00                           jsr spi_wra
+  313 T:11ac  a9 80                              lda #($80)
+  313 T:11ae  20 00 00                           jsr spi_wra
+  313 T:11b1  20 00 00                           jsr spi_disable
+
+  315 T:11b4  20 45 11                           jsr set_params
+  316 T:11b7  b0 06                              bcs end
+
+  318 T:11b9                                    ; set dataptr to data buffer address
+  319 T:11b9  20 90 11                           jsr ptr_to_buffer
+
+  321 T:11bc  4c c0 11                           jmp get_in
+  322 T:11bf  60                       end       rts 
+  323 T:11c0                                     .) 
+
+  325 T:11c0                                    ; IN transfer into buffer as given (in ctrlptr)
+  326 T:11c0                           get_in    .( 
+
+  333 T:11c0                                    ; set retry count
+  334 T:11c0  a9 0a                              lda #10
+  335 T:11c2  8d 07 04                           sta rcnt
+
+  337 T:11c5                                    ; set byte count
+  338 T:11c5  a9 00                              lda #0
+  339 T:11c7  8d 08 04                           sta bcnt
+
+  341 T:11ca                                    ; clear rvdavirq (twice, for double buffering, just in case)
+  342 T:11ca  a9 00                              lda #<MAX3421E_EnMask
+  342 T:11cc  20 00 00                           jsr spi_enable
+  342 T:11cf  a9 ca                              lda #(25<<3)'0f$02
+  342 T:11d1  20 00 00                           jsr spi_wra
+  342 T:11d4  a9 04                              lda #($04)
+  342 T:11d6  20 00 00                           jsr spi_wra
+  342 T:11d9  20 00 00                           jsr spi_disable
+  343 T:11dc  a9 00                              lda #<MAX3421E_EnMask
+  343 T:11de  20 00 00                           jsr spi_enable
+  343 T:11e1  a9 ca                              lda #(25<<3)'0f$02
+  343 T:11e3  20 00 00                           jsr spi_wra
+  343 T:11e6  a9 04                              lda #($04)
+  343 T:11e8  20 00 00                           jsr spi_wra
+  343 T:11eb  20 00 00                           jsr spi_disable
+
+  345 T:11ee                                    ; set toggle
+  346 T:11ee  a0 03                              ldy #3
+  347 T:11f0  b1 04                              lda (ctrlptr),y
+  348 T:11f2  29 40                              and #$40
+  349 T:11f4  d0 03                              bne togd1
+  350 T:11f6  a9 10                              lda #$10
+  351 T:11f8  2c                                 .byt $2c
+  352 T:11f9  a9 20                    togd1     lda #$20
+  353 T:11fb  48                                 pha 
+  353 T:11fc  a9 00                              lda #<MAX3421E_EnMask
+  353 T:11fe  20 00 00                           jsr spi_enable
+  353 T:1201  a9 ea                              lda #(29<<3)'0f$02
+  353 T:1203  20 00 00                           jsr spi_wra
+  353 T:1206  68                                 pla 
+  353 T:1207  20 00 00                           jsr spi_wra
+  353 T:120a  20 00 00                           jsr spi_disable
+
+  355 T:120d                           againin   
+  356 T:120d                                    ; start command
+  357 T:120d  a9 00                              lda #(0)
+  358 T:120f  0d 03 04                           ora endpt             ; BULK/IN command is $0x ORd with endpoint number
+  359 T:1212  20 ff 13                           jsr docmd
+  360 T:1215  f0 22                              beq noerror                ; hrSUCCESS is 0
+
+  362 T:1217  c9 05                              cmp #$05
+  363 T:1219  f0 1a                              beq error
+  364 T:121b  c9 0e                              cmp #$0e
+  365 T:121d  f0 16                              beq error
+  366 T:121f  c9 04                              cmp #$04
+  367 T:1221  d0 0a                              bne doretry
+  368 T:1223  2c 04 04                           bit flags             ; check HOST_FLAG_IGNORE_NAK in bit 7
+  369 T:1226  10 05                              bpl doretry
+  370 T:1228  a9 00                              lda #0
+  371 T:122a  4c 4b 12                           jmp no_nak
+  372 T:122d                           doretry   
+  373 T:122d  ce 07 04                           dec rcnt
+
+  381 T:1230  f0 03                              beq error
+  382 T:1232  4c 0d 12                           jmp againin
+  383 T:1235                           error     
+
+  387 T:1235  a0 fb                              ldy #<-5
+  388 T:1237  38                                 sec 
+  389 T:1238  60                                 rts 
+  390 T:1239                           noerror   
+  391 T:1239                                    ; transfer data
+  392 T:1239                                    ; read number of bytes
+  393 T:1239  a9 00                              lda #<MAX3421E_EnMask
+  393 T:123b  20 00 00                           jsr spi_enable
+  393 T:123e  a9 30                              lda #6<<3&&$00
+  393 T:1240  20 00 00                           jsr spi_wra
+  393 T:1243  20 00 00                           jsr spi_wra
+  393 T:1246  48                                 pha 
+  393 T:1247  20 00 00                           jsr spi_disable
+  393 T:124a  68                                 pla 
+
+  403 T:124b                           no_nak    
+  404 T:124b  8d 06 04                           sta cnt
+
+  406 T:124e                                    ; do we want that much data?
+  407 T:124e  18                                 clc 
+  408 T:124f  6d 08 04                           adc bcnt
+  409 T:1252  cd 02 04                           cmp len
+  410 T:1255  90 03                              bcc lenok
+  411 T:1257  ad 02 04                           lda len
+  412 T:125a  38                       lenok     sec 
+  413 T:125b  ed 08 04                           sbc bcnt
+  414 T:125e  8d 06 04                           sta cnt
+
+  416 T:1261                                    ; data available?
+  417 T:1261  c9 00                              cmp #0
+  418 T:1263  f0 1a                              beq nodata
+
+  420 T:1265                                    ; read data
+  421 T:1265  a9 00                              lda #<MAX3421E_EnMask
+  421 T:1267  20 00 00                           jsr spi_enable
+
+  423 T:126a  a9 08                              lda #1<<3
+  424 T:126c  20 00 00                           jsr spi_wra
+
+  426 T:126f  a0 00                              ldy #0
+  427 T:1271  20 00 00                 next      jsr spi_wra
+  428 T:1274  91 06                              sta (dataptr),y
+  429 T:1276  c8                                 iny 
+  430 T:1277  cc 06 04                           cpy cnt
+  431 T:127a  d0 f5                              bne next
+
+  433 T:127c  20 00 00                           jsr spi_disable
+
+  435 T:127f                           nodata    
+  436 T:127f                                    ; clear data available interrupt
+  437 T:127f  a9 00                              lda #<MAX3421E_EnMask
+  437 T:1281  20 00 00                           jsr spi_enable
+  437 T:1284  a9 ca                              lda #(25<<3)'0f$02
+  437 T:1286  20 00 00                           jsr spi_wra
+  437 T:1289  a9 04                              lda #($04)
+  437 T:128b  20 00 00                           jsr spi_wra
+  437 T:128e  20 00 00                           jsr spi_disable
+  438 T:1291                                    ; update byte counter
+  439 T:1291  ad 06 04                           lda cnt
+  440 T:1294  18                                 clc 
+  441 T:1295  6d 08 04                           adc bcnt
+  442 T:1298  8d 08 04                           sta bcnt
+
+  444 T:129b                                    ; are we done yet?
+  445 T:129b                                    ; was last packet full sized?
+  446 T:129b  ad 06 04                           lda cnt
+  447 T:129e  cd 05 04                           cmp maxpklen
+  448 T:12a1  d0 0f                              bne done                ; no, then no further packet to receive
+
+  450 T:12a3                                    ; update pointer and length
+  451 T:12a3  ad 06 04                           lda cnt
+  452 T:12a6  18                                 clc 
+  453 T:12a7  65 06                              adc dataptr
+  454 T:12a9  85 06                              sta dataptr
+  455 T:12ab  90 02                              bcc nocarry
+  456 T:12ad  e6 07                              inc dataptr+1
+  457 T:12af                           nocarry   
+  458 T:12af  4c 0d 12                           jmp againin
+
+  460 T:12b2                           done                       ; update DATA toggle
+  461 T:12b2  a0 03                              ldy #3
+  462 T:12b4  a9 00                              lda #<MAX3421E_EnMask
+  462 T:12b6  20 00 00                           jsr spi_enable
+  462 T:12b9  a9 f8                              lda #31<<3&&$00
+  462 T:12bb  20 00 00                           jsr spi_wra
+  462 T:12be  20 00 00                           jsr spi_wra
+  462 T:12c1  48                                 pha 
+  462 T:12c2  20 00 00                           jsr spi_disable
+  462 T:12c5  68                                 pla 
+  463 T:12c6  29 10                              and #$10
+  464 T:12c8  f0 06                              beq data0
+  465 T:12ca  b1 04                              lda (ctrlptr),y
+  466 T:12cc  09 40                              ora #$40
+  467 T:12ce  d0 04                              bne wrtog
+  468 T:12d0  b1 04                    data0     lda (ctrlptr),y
+  469 T:12d2  29 bf                              and #255-$40
+  470 T:12d4  91 04                    wrtog     sta (ctrlptr),y
+
+  472 T:12d6                                    ; done
+  473 T:12d6  ad 08 04                           lda bcnt
+  474 T:12d9  18                                 clc 
+  475 T:12da  60                                 rts 
+  476 T:12db                                     .) 
+
+  478 T:12db                           usb_host_control .( 
+  479 T:12db                                     .( 
+  479 T:12db  20 98 04                           jsr __l
+  479 T:12de                                     .data 
+  479 D:0498  20 00 00                 __l       jsr dbg_msg
+  479 D:049b  43 4f 4e 54 52 4f 4c 00            .asc "CONTROL",0
+  479 D:04a3  60                                 rts 
+  479 D:04a4                                     .text 
+  479 T:12de                                     .) 
+  480 T:12de  85 04                              sta ctrlptr
+  481 T:12e0  84 05                              sty ctrlptr+1
+
+  488 T:12e2  20 45 11                           jsr set_params
+  489 T:12e5  b0 32                              bcs err
+
+  491 T:12e7                                    ; send setup packet
+  492 T:12e7  20 62 14                           jsr sendsetup
+  493 T:12ea  b0 2d                              bcs err
+
+  500 T:12ec                                    ; set dataptr to data buffer address
+  501 T:12ec  20 90 11                           jsr ptr_to_buffer
+
+  503 T:12ef                                    ; set to DATA1 toggle
+  504 T:12ef  a0 03                              ldy #3
+  505 T:12f1  b1 04                              lda (ctrlptr),y
+  506 T:12f3  09 40                              ora #$40
+  507 T:12f5  91 04                              sta (ctrlptr),y
+
+  509 T:12f7                                    ; host to device or device to host
+  510 T:12f7  a0 0a                              ldy #10
+  511 T:12f9  b1 04                              lda (ctrlptr),y
+  512 T:12fb  30 0f                              bmi receive
+
+  514 T:12fd  18                                 clc                    ; for outnodata
+  515 T:12fe  ac 02 04                           ldy len
+  516 T:1301  f0 03                              beq outnodata                ; e.g. setaddr does not have data to be sent
+
+  518 T:1303  20 1d 13                           jsr do_out
+  519 T:1306                           outnodata 
+  520 T:1306  08                                 php 
+  521 T:1307  48                                 pha 
+
+  523 T:1308  a9 80                              lda #($80)           ; HS_IN
+  524 T:130a  d0 07                              bne dohs                ; always
+
+  526 T:130c                           receive   
+  527 T:130c  20 c0 11                           jsr get_in
+  528 T:130f  08                                 php 
+  529 T:1310  48                                 pha 
+
+  531 T:1311  a9 a0                              lda #($80+$20)     ; HS_OUT
+  532 T:1313                           dohs      
+
+  534 T:1313  20 ff 13                           jsr docmd
+
+  536 T:1316  68                                 pla 
+  537 T:1317  28                                 plp 
+  538 T:1318  60                                 rts 
+  539 T:1319                           err       .( 
+  539 T:1319  20 a4 04                           jsr __l
+  539 T:131c                                     .data 
+  539 D:04a4  20 00 00                 __l       jsr dbg_msg
+  539 D:04a7  43 4f 4e 54 52 4f 4c ...           .asc "CONTROL ERR",0
+  539 D:04b3  60                                 rts 
+  539 D:04b4                                     .text 
+  539 T:131c                                     .) 
+  540 T:131c  60                                 rts 
+
+  542 T:131d                                     .) 
+
+  544 T:131d                                    ; OUT transfer into buffer as given (in ctrlptr)
+  545 T:131d                                    ; len is the number of bytes to transfer in total
+  546 T:131d                           do_out    .( 
+
+  548 T:131d                                    ; set retry count
+  549 T:131d  a9 0a                              lda #10
+  550 T:131f  8d 07 04                           sta rcnt
+
+  552 T:1322                                    ; set byte count
+  553 T:1322  a9 00                              lda #0
+  554 T:1324  8d 08 04                           sta bcnt
+
+  556 T:1327                                    ; set toggle
+  557 T:1327  a0 03                              ldy #3
+  558 T:1329  b1 04                              lda (ctrlptr),y
+  559 T:132b  29 40                              and #$40
+  560 T:132d  d0 03                              bne togd1
+  561 T:132f  a9 40                              lda #$40
+  562 T:1331  2c                                 .byt $2c
+  563 T:1332  a9 80                    togd1     lda #$80
+  564 T:1334  48                                 pha 
+  564 T:1335  a9 00                              lda #<MAX3421E_EnMask
+  564 T:1337  20 00 00                           jsr spi_enable
+  564 T:133a  a9 ea                              lda #(29<<3)'0f$02
+  564 T:133c  20 00 00                           jsr spi_wra
+  564 T:133f  68                                 pla 
+  564 T:1340  20 00 00                           jsr spi_wra
+  564 T:1343  20 00 00                           jsr spi_disable
+
+  566 T:1346                           nextout   
+  567 T:1346                                    ; computer number of bytes to transfer now
+  568 T:1346  ad 02 04                           lda len
+  569 T:1349  38                                 sec 
+  570 T:134a  ed 08 04                           sbc bcnt
+  571 T:134d  cd 05 04                           cmp maxpklen
+  572 T:1350  90 03                              bcc lenok
+  573 T:1352  ad 05 04                           lda maxpklen
+  574 T:1355  8d 06 04                 lenok     sta cnt
+
+  576 T:1358  c9 00                              cmp #0
+  577 T:135a  f0 1b                              beq nodata
+
+  579 T:135c                                    ; write data to chip fifo
+  580 T:135c  a9 00                              lda #<MAX3421E_EnMask
+  580 T:135e  20 00 00                           jsr spi_enable
+
+  582 T:1361  a9 12                              lda #2<<3&&2 ; OR#2 is write bit
+  583 T:1363  20 00 00                           jsr spi_wra
+
+  585 T:1366  a0 00                              ldy #0
+  586 T:1368  b1 06                    next      lda (dataptr),y
+  587 T:136a  20 00 00                           jsr spi_wra
+  588 T:136d  c8                                 iny 
+  589 T:136e  cc 06 04                           cpy cnt
+  590 T:1371  d0 f5                              bne next
+
+  592 T:1373  20 00 00                           jsr spi_disable
+
+  594 T:1376  98                                 tya 
+  595 T:1377                           nodata    
+  596 T:1377                                    ; write number of bytes
+  597 T:1377  48                                 pha 
+  597 T:1378  a9 00                              lda #<MAX3421E_EnMask
+  597 T:137a  20 00 00                           jsr spi_enable
+  597 T:137d  a9 3a                              lda #(7<<3)'0f$02
+  597 T:137f  20 00 00                           jsr spi_wra
+  597 T:1382  68                                 pla 
+  597 T:1383  20 00 00                           jsr spi_wra
+  597 T:1386  20 00 00                           jsr spi_disable
+  598 T:1389                           againout  
+  599 T:1389                                    ; start command
+  600 T:1389  ad 03 04                           lda endpt             ; BULK/OUT command is bmOUTNIN ORd with endpoint number
+  601 T:138c  09 20                              ora #($20)
+  602 T:138e  20 ff 13                           jsr docmd
+  603 T:1391  f0 22                              beq noerror                ; hrSUCCESS is 0
+
+  605 T:1393  c9 05                    retry     cmp #$05
+  606 T:1395  f0 1a                              beq error
+  607 T:1397  c9 0e                              cmp #$0e
+  608 T:1399  f0 16                              beq error
+  609 T:139b  c9 04                              cmp #$04
+  610 T:139d  d0 0a                              bne doretry
+  611 T:139f  2c 04 04                           bit flags             ; check HOST_FLAG_IGNORE_NAK in bit 7
+  612 T:13a2  10 05                              bpl doretry
+  613 T:13a4  a9 00                              lda #0
+  614 T:13a6  4c fd 13                           jmp no_nak
+  615 T:13a9                           doretry   
+  616 T:13a9  ce 07 04                           dec rcnt
+  617 T:13ac  f0 03                              beq error
+  618 T:13ae  4c 89 13                           jmp againout
+  619 T:13b1  a0 fb                    error     ldy #<-5
+  620 T:13b3  38                                 sec 
+  621 T:13b4  60                                 rts 
+  622 T:13b5                           noerror   
+  623 T:13b5                                    ; update byte counter
+  624 T:13b5  ad 06 04                           lda cnt
+  625 T:13b8  18                                 clc 
+  626 T:13b9  6d 08 04                           adc bcnt
+  627 T:13bc  8d 08 04                           sta bcnt
+
+  629 T:13bf                                    ; are we done yet?
+  630 T:13bf                                    ; was last packet full sized?
+  631 T:13bf  ad 06 04                           lda cnt
+  632 T:13c2  cd 05 04                           cmp maxpklen
+  633 T:13c5  d0 0f                              bne done                ; no, then no further packet to send
+
+  635 T:13c7                                    ; update pointer and length
+  636 T:13c7  ad 06 04                           lda cnt
+  637 T:13ca  18                                 clc 
+  638 T:13cb  65 06                              adc dataptr
+  639 T:13cd  85 06                              sta dataptr
+  640 T:13cf  90 02                              bcc nocarry
+  641 T:13d1  e6 07                              inc dataptr+1
+  642 T:13d3                           nocarry   
+  643 T:13d3  4c 46 13                           jmp nextout
+
+  645 T:13d6                           done                       ; update DATA toggle
+  646 T:13d6  a0 03                              ldy #3
+  647 T:13d8  a9 00                              lda #<MAX3421E_EnMask
+  647 T:13da  20 00 00                           jsr spi_enable
+  647 T:13dd  a9 f8                              lda #31<<3&&$00
+  647 T:13df  20 00 00                           jsr spi_wra
+  647 T:13e2  20 00 00                           jsr spi_wra
+  647 T:13e5  48                                 pha 
+  647 T:13e6  20 00 00                           jsr spi_disable
+  647 T:13e9  68                                 pla 
+  648 T:13ea  29 20                              and #$20
+  649 T:13ec  f0 06                              beq data0
+  650 T:13ee  b1 04                              lda (ctrlptr),y
+  651 T:13f0  09 40                              ora #$40
+  652 T:13f2  d0 04                              bne wrtog
+  653 T:13f4  b1 04                    data0     lda (ctrlptr),y
+  654 T:13f6  29 bf                              and #255-$40
+  655 T:13f8  91 04                    wrtog     sta (ctrlptr),y
+
+  657 T:13fa                                    ; done
+  658 T:13fa  ad 08 04                           lda bcnt
+  659 T:13fd                           no_nak    
+  660 T:13fd  18                                 clc 
+  661 T:13fe  60                                 rts 
+  662 T:13ff                                     .) 
+
+  664 T:13ff                                    ; trigger command and wait for completion
+  665 T:13ff                                    ; must keep y
+  666 T:13ff                           docmd     .( 
+  667 T:13ff  48                                 pha 
+  668 T:1400                                    ; clear xfer done irq, just in case
+  669 T:1400  a9 00                              lda #<MAX3421E_EnMask
+  669 T:1402  20 00 00                           jsr spi_enable
+  669 T:1405  a9 ca                              lda #(25<<3)'0f$02
+  669 T:1407  20 00 00                           jsr spi_wra
+  669 T:140a  a9 80                              lda #($80)
+  669 T:140c  20 00 00                           jsr spi_wra
+  669 T:140f  20 00 00                           jsr spi_disable
+
+  678 T:1412  68                                 pla 
+  679 T:1413  48                                 pha 
+  679 T:1414  a9 00                              lda #<MAX3421E_EnMask
+  679 T:1416  20 00 00                           jsr spi_enable
+  679 T:1419  a9 f2                              lda #(30<<3)'0f$02
+  679 T:141b  20 00 00                           jsr spi_wra
+  679 T:141e  68                                 pla 
+  679 T:141f  20 00 00                           jsr spi_wra
+  679 T:1422  20 00 00                           jsr spi_disable                ; store in HXFR
+
+  681 T:1425                                    ; wait for completion
+  682 T:1425                           l0        
+
+  686 T:1425  a9 00                              lda #<MAX3421E_EnMask
+  686 T:1427  20 00 00                           jsr spi_enable
+  686 T:142a  a9 c8                              lda #25<<3&&$00
+  686 T:142c  20 00 00                           jsr spi_wra
+  686 T:142f  20 00 00                           jsr spi_wra
+  686 T:1432  48                                 pha 
+  686 T:1433  20 00 00                           jsr spi_disable
+  686 T:1436  68                                 pla 
+  687 T:1437  29 80                              and #$80
+  688 T:1439  f0 ea                              beq l0
+  689 T:143b  48                                 pha 
+  689 T:143c  a9 00                              lda #<MAX3421E_EnMask
+  689 T:143e  20 00 00                           jsr spi_enable
+  689 T:1441  a9 ca                              lda #(25<<3)'0f$02
+  689 T:1443  20 00 00                           jsr spi_wra
+  689 T:1446  68                                 pla 
+  689 T:1447  20 00 00                           jsr spi_wra
+  689 T:144a  20 00 00                           jsr spi_disable                ; clear interrupt bit
+
+  691 T:144d                                    ; check result
+  692 T:144d  a9 00                              lda #<MAX3421E_EnMask
+  692 T:144f  20 00 00                           jsr spi_enable
+  692 T:1452  a9 f8                              lda #31<<3&&$00
+  692 T:1454  20 00 00                           jsr spi_wra
+  692 T:1457  20 00 00                           jsr spi_wra
+  692 T:145a  48                                 pha 
+  692 T:145b  20 00 00                           jsr spi_disable
+  692 T:145e  68                                 pla 
+  693 T:145f  29 0f                              and #($01+$02+$04+$08); the four result bits
+  694 T:1461                                    ;cmp #hrBUSY
+  695 T:1461                                    ;beq l0
+  696 T:1461                                    ;cmp #0
+
+  702 T:1461  60                                 rts 
+  703 T:1462                                     .) 
+
+  705 T:1462                                    ; send a setup packet
+  706 T:1462                           sendsetup .( 
+
+  711 T:1462  a9 00                              lda #<MAX3421E_EnMask
+  711 T:1464  20 00 00                           jsr spi_enable
+
+  713 T:1467  a9 22                              lda #(4<<3)'0f2; OR#2 to set the write bit
+  714 T:1469  20 00 00                           jsr spi_wra
+
+  716 T:146c                                    ; copy control message to chip fifo
+  717 T:146c  a0 0a                              ldy #10
+  718 T:146e                           c1        
+  719 T:146e  b1 04                              lda (ctrlptr),y
+
+  725 T:1470  20 00 00                           jsr spi_wra                ; setup packet into sl811 buffer
+  726 T:1473  c8                                 iny 
+  727 T:1474  c0 12                              cpy #10+8
+  728 T:1476  90 f6                              bcc c1
+
+  730 T:1478  20 00 00                           jsr spi_disable
+
+  732 T:147b  a0 0a                              ldy #10
+  733 T:147d                           retry     
+  734 T:147d                                    ; start SETUP
+  735 T:147d  a9 10                              lda #($10)
+  736 T:147f  20 ff 13                           jsr docmd
+  737 T:1482  f0 0a                              beq noerror                ; hrSUCCESS is 0
+
+  739 T:1484  88                                 dey 
+  740 T:1485  d0 f6                              bne retry
+  741 T:1487  38                                 sec 
+  742 T:1488  a0 fb                              ldy #<-5
+  743 T:148a                                     .( 
+  743 T:148a  20 b4 04                           jsr __l
+  743 T:148d                                     .data 
+  743 D:04b4  20 00 00                 __l       jsr dbg_msg
+  743 D:04b7  53 45 54 55 50 20 45 ...           .asc "SETUP ERR",0
+  743 D:04c1  60                                 rts 
+  743 D:04c2                                     .text 
+  743 T:148d                                     .) 
+  744 T:148d  60                                 rts 
+  745 T:148e                           noerror   
+  746 T:148e  18                                 clc 
+  747 T:148f  60                                 rts 
+  748 T:1490                                     .) 
+
+  751 T:1490                                    ; set the preamble variable
+  752 T:1490                                    ; in: AC = device speed, rootspd = hub speed (0/1 = low/full speed)
+  753 T:1490                                    ; must preserve y
+  754 T:1490                           set_pream .( 
+  755 T:1490  cd 00 04                           cmp rootspd
+  756 T:1493  f0 1a                              beq no_pream                ; both either low or full, then no preamble
+  757 T:1495  c9 00                              cmp #0             ; is device low
+  758 T:1497  d0 16                              bne no_pream                ; no, device is high (and hub low, then no preamble)
+  759 T:1499  a9 00                              lda #<MAX3421E_EnMask
+  759 T:149b  20 00 00                           jsr spi_enable
+  759 T:149e  a9 d8                              lda #27<<3&&$00
+  759 T:14a0  20 00 00                           jsr spi_wra
+  759 T:14a3  20 00 00                           jsr spi_wra
+  759 T:14a6  48                                 pha 
+  759 T:14a7  20 00 00                           jsr spi_disable
+  759 T:14aa  68                                 pla 
+  760 T:14ab  09 04                              ora #$04
+  761 T:14ad  d0 14                              bne setit
+  762 T:14af                           no_pream  
+  763 T:14af  a9 00                              lda #<MAX3421E_EnMask
+  763 T:14b1  20 00 00                           jsr spi_enable
+  763 T:14b4  a9 d8                              lda #27<<3&&$00
+  763 T:14b6  20 00 00                           jsr spi_wra
+  763 T:14b9  20 00 00                           jsr spi_wra
+  763 T:14bc  48                                 pha 
+  763 T:14bd  20 00 00                           jsr spi_disable
+  763 T:14c0  68                                 pla 
+  764 T:14c1  29 fb                              and #255-$04
+  765 T:14c3                           setit     
+
+  775 T:14c3  48                                 pha 
+  775 T:14c4  a9 00                              lda #<MAX3421E_EnMask
+  775 T:14c6  20 00 00                           jsr spi_enable
+  775 T:14c9  a9 da                              lda #(27<<3)'0f$02
+  775 T:14cb  20 00 00                           jsr spi_wra
+  775 T:14ce  68                                 pla 
+  775 T:14cf  20 00 00                           jsr spi_wra
+  775 T:14d2  20 00 00                           jsr spi_disable
+  776 T:14d5  60                                 rts 
+  777 T:14d6                                     .) 
+
+  779 T:14d6                                    ; check USB device detection
+  780 T:14d6                                    ; C=1 device detected
+  781 T:14d6                                    ; C=0 device not present
+  782 T:14d6                           queryusbdevice .( 
+
+  784 T:14d6  a9 00                              lda #<MAX3421E_EnMask
+  784 T:14d8  20 00 00                           jsr spi_enable
+  784 T:14db  a9 ea                              lda #(29<<3)'0f$02
+  784 T:14dd  20 00 00                           jsr spi_wra
+  784 T:14e0  a9 04                              lda #($04)
+  784 T:14e2  20 00 00                           jsr spi_wra
+  784 T:14e5  20 00 00                           jsr spi_disable
+
+  786 T:14e8                                    ; wait for end of sampling
+  787 T:14e8                                    ; Note: appnotes says SAMPLEBUS is cleared when sampling finished
+  788 T:14e8                                    ; however, it cannot be read. Other code just reads HSRL without further
+  789 T:14e8                                    ; ado. We wait for one frame
+  790 T:14e8  a9 01                              lda #1
+  791 T:14ea  20 00 00                           jsr pause
+
+  793 T:14ed                                    ; check bus status
+  794 T:14ed  a9 00                              lda #<MAX3421E_EnMask
+  794 T:14ef  20 00 00                           jsr spi_enable
+  794 T:14f2  a9 f8                              lda #31<<3&&$00
+  794 T:14f4  20 00 00                           jsr spi_wra
+  794 T:14f7  20 00 00                           jsr spi_wra
+  794 T:14fa  48                                 pha 
+  794 T:14fb  20 00 00                           jsr spi_disable
+  794 T:14fe  68                                 pla 
+  795 T:14ff                                    ;inc $8027+80
+  796 T:14ff                                    ;sta $8026+80
+  797 T:14ff  29 c0                              and #$80+$40       ; if both are zero
+  798 T:1501  f0 3f                              beq nodevice
+  799 T:1503  4a                                 lsr                    ; div by 2, so is $00/20/40/60, but never neg
+  800 T:1504  8d 01 04                           sta polled             ; store whether device has been detected
+
+  802 T:1507  a9 00                              lda #<MAX3421E_EnMask
+  802 T:1509  20 00 00                           jsr spi_enable
+  802 T:150c  a9 d8                              lda #27<<3&&$00
+  802 T:150e  20 00 00                           jsr spi_wra
+  802 T:1511  20 00 00                           jsr spi_wra
+  802 T:1514  48                                 pha 
+  802 T:1515  20 00 00                           jsr spi_disable
+  802 T:1518  68                                 pla 
+  803 T:1519  29 02                              and #$02
+  804 T:151b  f0 03                              beq highspeedcheck
+  805 T:151d  a9 40                              lda #$80>>1       ; low speed check
+  806 T:151f  2c                                 .byt $2c
+  807 T:1520                           highspeedcheck 
+  808 T:1520  a9 20                              lda #$40>>1
+  809 T:1522  2d 01 04                           and polled
+  810 T:1525  f0 03                              beq isfullspeed
+  811 T:1527  a9 00                              lda #0             ; low speed
+  812 T:1529  2c                                 .byt $2c
+  813 T:152a                           isfullspeed 
+  814 T:152a  a9 01                              lda #1
+  815 T:152c  48                                 pha 
+  816 T:152d                                    ; clear connect IRQ, as may be set by changing LOWSPEED or SAMPLEBUS
+  817 T:152d  a9 00                              lda #<MAX3421E_EnMask
+  817 T:152f  20 00 00                           jsr spi_enable
+  817 T:1532  a9 ca                              lda #(25<<3)'0f$02
+  817 T:1534  20 00 00                           jsr spi_wra
+  817 T:1537  a9 20                              lda #($20)
+  817 T:1539  20 00 00                           jsr spi_wra
+  817 T:153c  20 00 00                           jsr spi_disable
+
+  821 T:153f  68                                 pla 
+  822 T:1540  38                                 sec 
+  823 T:1541  60                                 rts 
+  824 T:1542                           nodevice  
+  825 T:1542  18                                 clc                    ; then no device - C=0 (0 is < 1)
+
+  827 T:1543  60                                 rts 
+  828 T:1544                                     .) 
+
+  830 T:1544                                    ; reset the chip and USB 
+  831 T:1544                                    ;1.  Set BUSRST = 1.
+  832 T:1544                                    ;2.  Test for BUSRST = 0 or respond to the BUSEVENTIRQ.
+  833 T:1544                                    ;3.  Turn on frame markers by setting SOFKAENAB = 1.
+  834 T:1544                                    ;4.  Wait for at least one FRAMEIRQ.
+
+  836 T:1544                           usbreset  .( 
+  837 T:1544                                     .( 
+  837 T:1544  20 c2 04                           jsr __l
+  837 T:1547                                     .data 
+  837 D:04c2  20 00 00                 __l       jsr dbg_msg
+  837 D:04c5  55 53 42 52 45 53 45 ...           .asc "USBRESET",0
+  837 D:04ce  60                                 rts 
+  837 D:04cf                                     .text 
+  837 T:1547                                     .) 
+  838 T:1547                                    ; switch off sof frames
+  839 T:1547  a9 00                              lda #<MAX3421E_EnMask
+  839 T:1549  20 00 00                           jsr spi_enable
+  839 T:154c  a9 d8                              lda #27<<3&&$00
+  839 T:154e  20 00 00                           jsr spi_wra
+  839 T:1551  20 00 00                           jsr spi_wra
+  839 T:1554  48                                 pha 
+  839 T:1555  20 00 00                           jsr spi_disable
+  839 T:1558  68                                 pla 
+  840 T:1559  29 f7                              and #255-$08
+  841 T:155b  48                                 pha 
+  841 T:155c  a9 00                              lda #<MAX3421E_EnMask
+  841 T:155e  20 00 00                           jsr spi_enable
+  841 T:1561  a9 da                              lda #(27<<3)'0f$02
+  841 T:1563  20 00 00                           jsr spi_wra
+  841 T:1566  68                                 pla 
+  841 T:1567  20 00 00                           jsr spi_wra
+  841 T:156a  20 00 00                           jsr spi_disable
+
+  843 T:156d                                    ; set BUSRST to 1
+  844 T:156d  a9 00                              lda #<MAX3421E_EnMask
+  844 T:156f  20 00 00                           jsr spi_enable
+  844 T:1572  a9 ea                              lda #(29<<3)'0f$02
+  844 T:1574  20 00 00                           jsr spi_wra
+  844 T:1577  a9 01                              lda #($01)
+  844 T:1579  20 00 00                           jsr spi_wra
+  844 T:157c  20 00 00                           jsr spi_disable
+
+  846 T:157f                                    ; wait for BUSRST to become 0
+  847 T:157f  a9 00                    l0        lda #<MAX3421E_EnMask
+  847 T:1581  20 00 00                           jsr spi_enable
+  847 T:1584  a9 e8                              lda #29<<3&&$00
+  847 T:1586  20 00 00                           jsr spi_wra
+  847 T:1589  20 00 00                           jsr spi_wra
+  847 T:158c  48                                 pha 
+  847 T:158d  20 00 00                           jsr spi_disable
+  847 T:1590  68                                 pla 
+  848 T:1591  29 01                              and #$01
+  849 T:1593  d0 ea                              bne l0
+
+  851 T:1595                           startsof  
+  852 T:1595                                    ; clear frame irq
+  853 T:1595  a9 00                              lda #<MAX3421E_EnMask
+  853 T:1597  20 00 00                           jsr spi_enable
+  853 T:159a  a9 ca                              lda #(25<<3)'0f$02
+  853 T:159c  20 00 00                           jsr spi_wra
+  853 T:159f  a9 40                              lda #($40)
+  853 T:15a1  20 00 00                           jsr spi_wra
+  853 T:15a4  20 00 00                           jsr spi_disable
+
+  855 T:15a7                                    ; turn on frame markers
+  856 T:15a7                                    ; When the CPU sets SOFKAENAB = 1, the SIE automatically generates 1-millisecond frame
+  857 T:15a7                                    ; markers. If the bit LOWSPEED = 0, the SIE generates SOF packets. If LOWSPEED = 1, the SIE
+  858 T:15a7                                    ; generates keep-alive pulses.
+  859 T:15a7  a9 00                              lda #<MAX3421E_EnMask
+  859 T:15a9  20 00 00                           jsr spi_enable
+  859 T:15ac  a9 d8                              lda #27<<3&&$00
+  859 T:15ae  20 00 00                           jsr spi_wra
+  859 T:15b1  20 00 00                           jsr spi_wra
+  859 T:15b4  48                                 pha 
+  859 T:15b5  20 00 00                           jsr spi_disable
+  859 T:15b8  68                                 pla 
+  860 T:15b9  09 08                              ora #$08
+  861 T:15bb  48                                 pha 
+  861 T:15bc  a9 00                              lda #<MAX3421E_EnMask
+  861 T:15be  20 00 00                           jsr spi_enable
+  861 T:15c1  a9 da                              lda #(27<<3)'0f$02
+  861 T:15c3  20 00 00                           jsr spi_wra
+  861 T:15c6  68                                 pla 
+  861 T:15c7  20 00 00                           jsr spi_wra
+  861 T:15ca  20 00 00                           jsr spi_disable
+
+  863 T:15cd                                    ; The SOF or KA pulses start after the SOFKAENAB bit has asserted for 1 millisecond. If the
+  864 T:15cd                                    ; CPU sets SOFKAENAB = 0 while the SIE is generating a frame marker, the SIE completes the
+  865 T:15cd                                    ; signaling before shutting off the frame markers.
+  866 T:15cd                                    ;
+  867 T:15cd                                    ; wait for first frame
+  868 T:15cd  a9 00                    l1        lda #<MAX3421E_EnMask
+  868 T:15cf  20 00 00                           jsr spi_enable
+  868 T:15d2  a9 c8                              lda #25<<3&&$00
+  868 T:15d4  20 00 00                           jsr spi_wra
+  868 T:15d7  20 00 00                           jsr spi_wra
+  868 T:15da  48                                 pha 
+  868 T:15db  20 00 00                           jsr spi_disable
+  868 T:15de  68                                 pla 
+  869 T:15df  29 40                              and #$40
+  870 T:15e1  f0 ea                              beq l1
+  871 T:15e3  48                                 pha 
+  871 T:15e4  a9 00                              lda #<MAX3421E_EnMask
+  871 T:15e6  20 00 00                           jsr spi_enable
+  871 T:15e9  a9 ca                              lda #(25<<3)'0f$02
+  871 T:15eb  20 00 00                           jsr spi_wra
+  871 T:15ee  68                                 pla 
+  871 T:15ef  20 00 00                           jsr spi_wra
+  871 T:15f2  20 00 00                           jsr spi_disable
+  872 T:15f5                                     .( 
+  872 T:15f5  20 cf 04                           jsr __l
+  872 T:15f8                                     .data 
+  872 D:04cf  20 00 00                 __l       jsr dbg_msg
+  872 D:04d2  45 4f 52 00                        .asc "EOR",0
+  872 D:04d6  60                                 rts 
+  872 D:04d7                                     .text 
+  872 T:15f8                                     .) 
+  873 T:15f8  60                                 rts 
+  874 T:15f9                                     .) 
+
+  877 T:15f9                                     .) 

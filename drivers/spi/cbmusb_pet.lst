@@ -1,0 +1,225 @@
+
+cbmusb_pet.a65
+
+
+    4 T:1000                                    ; Low level SPI routines for the CBMUSB device connected to the PET
+    5 T:1000                                    ;
+    6 T:1000                                    ; These routines use the VIA shift register to shift out the data, and a 
+    7 T:1000                                    ; hardware shift register connected to port B to read the data shifted in.
+    8 T:1000                                    ;
+    9 T:1000                                    ; note that the pure VIA shift register works as SPI mode 3, which is not
+   10 T:1000                                    ; understood by many MMC/SD Cards, but it is ok with the used USB chip
+   11 T:1000                                    ;
+   12 T:1000                                    ; The code waits for the shift register to finish. You could do that with
+   13 T:1000                                    ; NOPs as well for example, as a byte only takes 16 cycles. 
+   14 T:1000                                    ; However, then you can't test it with lower clocks easily.
+
+   17 T:1000                                    ; Connections
+   17 T:1000                                    
+   18 T:1000                                    ;  VIA CB2 (Beeper)  out to SPI MOSI
+   19 T:1000                                    ; VIA CB1 (CASS#2 read)  out to SPI CLK
+   20 T:1000                                    ; VIA PA0-7   in from SPI IN shift register
+   21 T:1000                                    ; VIA PB3 (CASS write)  out to SPI SEL
+   22 T:1000                                    ; VIA CA1 (userport)  in from SPI INT
+   23 T:1000                                    ; PIA PA4/5 (CASS#1/2 Sense)  to SPI RESET
+   24 T:1000                                    ; PIA PA7 (DIAG)   to switch beeper off
+   25 T:1000                                    ;
+   26 T:1000                                    ; Defines
+   26 T:1000                                    
+   27 T:1000                                    ; SPIVIA    $e840
+   28 T:1000                                    ; SPIPIA    $e810
+   29 T:1000                                    ;
+
+   31 T:1000                                     .( 
+
+via6522.i65
+
+
+   26 T:1000                                    VIA_DRB=0
+   27 T:1000                                    VIA_DRA=1
+   28 T:1000                                    VIA_DDRB=2
+   29 T:1000                                    VIA_DDRA=3
+   30 T:1000                                    VIA_T1CL=4
+   31 T:1000                                    VIA_T1CH=5
+   32 T:1000                                    VIA_T1LL=6
+   33 T:1000                                    VIA_T1LH=7
+   34 T:1000                                    VIA_T2CL=8
+   35 T:1000                                    VIA_T2CH=9
+   36 T:1000                                    VIA_SR=10
+   37 T:1000                                    VIA_ACR=11
+   38 T:1000                                    VIA_PCR=12
+   39 T:1000                                    VIA_IFR=13
+   40 T:1000                                    VIA_IER=14
+   41 T:1000                                    VIA_DRBX=15
+
+pia6521.i65
+
+
+   26 T:1000                                    PIA_PA=0
+   27 T:1000                                    PIA_CRA=1
+   28 T:1000                                    PIA_PB=2
+   29 T:1000                                    PIA_CRB=3
+
+   31 T:1000                                    ; Control Reg Data register select (1=I/O, 0=direction)
+   32 T:1000                                    PIA_CR_DSEL=%00000100
+   33 T:1000                                    PIA_CR_CBIO=%00100000
+   34 T:1000                                    PIA_CR_CBLVL=%00010000
+   35 T:1000                                    PIA_CR_STRB=%00001000
+
+cbmusb_pet.a65
+
+
+   36 T:1000                                    SPIVIA=$e840
+   37 T:1000                                    SPIPIA=$e810
+
+   39 T:1000                                    SPI_SEL=%00001000           ; VIA PB3
+   40 T:1000                                    SPI_MTR=%00010000           ; VIA PB4 (Tape 2) - Tape1 is PIA1 CB2
+
+   42 T:1000                                    SPI_RES=%00010000           ; PIA PA4
+   43 T:1000                                    SPI_ANTIBEEP=%10000000           ; PIA PA7
+
+   45 T:1000                                    SPI_CLK=100           ; 2*(N+2) = 24us per SPI bit for T2
+
+   47 T:1000                                    spi_wra=spi_rxtx
+   48 T:1000                                    spi_enable=spi_select
+   49 T:1000                                    spi_disable=spi_deselect
+
+   51 T:1000                                    ; init the SPI code
+   52 T:1000                           spi_init  .( 
+
+   54 T:1000  a9 53                              lda #"S"
+   55 T:1002  20 d2 ff                           jsr $ffd2
+
+   57 T:1005                                    ; deselect device,
+   58 T:1005                                    ; VIA PB3 (SEL) as output and high
+   59 T:1005  ad 40 e8                           lda SPIVIA+VIA_DRB
+   60 T:1008  09 08                              ora #SPI_SEL
+   61 T:100a                                    ;and #255-SPI_MTR
+   62 T:100a  8d 40 e8                           sta SPIVIA+VIA_DRB
+   63 T:100d  ad 42 e8                           lda SPIVIA+VIA_DDRB
+   64 T:1010  09 18                              ora #SPI_SEL+SPI_MTR
+   65 T:1012  8d 42 e8                           sta SPIVIA+VIA_DDRB
+
+   67 T:1015                                    ; release RESET
+   68 T:1015                                    ; PIA Data direction register
+   69 T:1015  ad 11 e8                           lda SPIPIA+PIA_CRA
+   70 T:1018  29 fb                              and #255-PIA_CR_DSEL
+   71 T:101a  8d 11 e8                           sta SPIPIA+PIA_CRA
+   72 T:101d                                    ; RESET and Beeper-off
+   73 T:101d  ad 10 e8                           lda SPIPIA+PIA_PA
+   74 T:1020  09 90                              ora #SPI_RES+SPI_ANTIBEEP
+   75 T:1022  8d 10 e8                           sta SPIPIA+PIA_PA
+   76 T:1025                                    ; PIA I/O port
+   77 T:1025  ad 11 e8                           lda SPIPIA+PIA_CRA
+   78 T:1028  09 04                              ora #PIA_CR_DSEL
+   79 T:102a  8d 11 e8                           sta SPIPIA+PIA_CRA
+   80 T:102d                                    ; setting I/O lines
+   81 T:102d  ad 10 e8                           lda SPIPIA+PIA_PA
+   82 T:1030  09 10                              ora #SPI_RES               ; RESET high
+   83 T:1032  29 7f                              and #255-SPI_ANTIBEEP         ; Beeper off
+   84 T:1034  8d 10 e8                           sta SPIPIA+PIA_PA
+
+   86 T:1037                                    ; set MTR (PIA1 CB2)
+   87 T:1037  ad 13 e8                           lda SPIPIA+PIA_CRB
+   88 T:103a  09 30                              ora #PIA_CR_CBIO+PIA_CR_CBLVL
+   89 T:103c  29 f7                              and #255-PIA_CR_STRB         ; set to low
+   90 T:103e  8d 13 e8                           sta SPIPIA+PIA_CRB
+
+   92 T:1041                                    ; VIA PA as input
+   93 T:1041  a9 00                              lda #0
+   94 T:1043  8d 43 e8                           sta SPIVIA+VIA_DDRA
+   95 T:1046                                    ; VIA CA1, CBX operation
+   96 T:1046  ad 4c e8                           lda SPIVIA+VIA_PCR
+   97 T:1049  29 ee                              and #%11101110             ; neg edge CA1, CB1 irq
+   98 T:104b  09 e0                              ora #%11100000             ; CB2 high out (CBx will be overwritten with SR)
+   99 T:104d  8d 4c e8                           sta SPIVIA+VIA_PCR
+
+  101 T:1050                                    ; disable shift register, CA1, CBx interrupts
+  102 T:1050  a9 1e                              lda #%00011110
+  103 T:1052  8d 4e e8                           sta SPIVIA+VIA_IER
+
+  105 T:1055                                    ;---------------------------------
+  106 T:1055                                    ; Alternative 1 - shift out under T2
+  107 T:1055                                    ;
+  108 T:1055                                    ; this uses T2 as shift register timer,
+  109 T:1055                                    ; as it can be made slower, if you have 
+  110 T:1055                                    ; slow voltage converters for example
+
+  112 T:1055                                    ; set timer 2 to timed
+  113 T:1055  ad 4b e8                           lda SPIVIA+VIA_ACR
+  114 T:1058  29 df                              and #%11011111
+  115 T:105a  8d 4b e8                           sta SPIVIA+VIA_ACR
+
+  117 T:105d                                    ; set timer 2 
+  118 T:105d                                    ; (half-cycle is T2+2)
+  119 T:105d                                    ; set low byte first into latch
+  120 T:105d  a9 64                              lda #<SPI_CLK
+  121 T:105f  8d 48 e8                           sta SPIVIA+VIA_T2CL
+  122 T:1062                                    ; high byte store sets counter
+  123 T:1062  a9 00                              lda #>SPI_CLK
+  124 T:1064  8d 49 e8                           sta SPIVIA+VIA_T2CH
+
+  126 T:1067                                    ; set up shift register mode to output
+  127 T:1067                                    ; under T2 control
+  128 T:1067  ad 4b e8                           lda SPIVIA+VIA_ACR
+  129 T:106a  29 f7                              and #%11110111
+  130 T:106c  09 14                              ora #%00010100
+  131 T:106e  8d 4b e8                           sta SPIVIA+VIA_ACR
+
+  147 T:1071                                    ;---------------------------------
+
+  149 T:1071                                    ; reset the device
+  150 T:1071  ad 10 e8                           lda SPIPIA+PIA_PA
+  151 T:1074  29 ef                              and #255-SPI_RES
+  152 T:1076  8d 10 e8                           sta SPIPIA+PIA_PA
+
+  154 T:1079  a0 00                              ldy #0
+  155 T:107b  a2 00                              ldx #0
+  156 T:107d  e8                       delay     inx 
+  157 T:107e  d0 fd                              bne delay
+  158 T:1080  c8                                 iny 
+  159 T:1081  d0 fa                              bne delay
+
+  161 T:1083  ad 10 e8                           lda SPIPIA+PIA_PA
+  162 T:1086  09 10                              ora #SPI_RES
+  163 T:1088  8d 10 e8                           sta SPIPIA+PIA_PA
+  164 T:108b                                    ; reset done
+
+  166 T:108b  60                                 rts 
+  167 T:108c                                     .) 
+
+  169 T:108c                                    ; select the device
+  170 T:108c                           spi_select .( 
+  171 T:108c  ad 40 e8                           lda SPIVIA+VIA_DRB
+  172 T:108f  29 f7                              and #255-SPI_SEL
+  173 T:1091  8d 40 e8                           sta SPIVIA+VIA_DRB
+  174 T:1094  60                                 rts 
+  175 T:1095                                     .) 
+
+  177 T:1095                                    ; deselect the device
+  178 T:1095                           spi_deselect .( 
+  179 T:1095  ad 40 e8                           lda SPIVIA+VIA_DRB
+  180 T:1098  09 08                              ora #SPI_SEL
+  181 T:109a  8d 40 e8                           sta SPIVIA+VIA_DRB
+  182 T:109d  60                                 rts 
+  183 T:109e                                    ;lda #$ff
+  184 T:109e                                    ;jmp spi_rxtx
+  185 T:109e                                     .) 
+  186 T:109e                                    ; fall-through
+  187 T:109e                           spi_rxtx  .( 
+  188 T:109e  8d 4a e8                           sta SPIVIA+VIA_SR
+  189 T:10a1                                    ; wait to finish
+  190 T:10a1  a9 04                              lda #%00000100
+  191 T:10a3  2c 4d e8                 wait0     bit SPIVIA+VIA_IFR
+  192 T:10a6  f0 fb                              beq wait0
+  193 T:10a8                           end                        ; clear int
+  194 T:10a8  8d 4d e8                           sta SPIVIA+VIA_IFR
+  195 T:10ab                                    ; read read data
+  196 T:10ab  ad 41 e8                 rd        lda SPIVIA+VIA_DRA         ; load from external shift reg
+  197 T:10ae  cd 41 e8                           cmp SPIVIA+VIA_DRA
+  198 T:10b1  d0 f8                              bne rd
+  199 T:10b3  c9 00                              cmp #0
+  200 T:10b5  60                                 rts 
+  201 T:10b6                                     .) 
+
+  204 T:10b6                                     .) 

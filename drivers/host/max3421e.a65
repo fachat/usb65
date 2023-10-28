@@ -60,6 +60,8 @@
 
 ;MAX3421E_EnMask = 0x04
 
+#define	DEBUG
+
 #include "usb.i65"
 #include "max3421e.i65"
 #include "hostmsg.i65"

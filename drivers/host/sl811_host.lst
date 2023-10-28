@@ -1,0 +1,821 @@
+
+sl811_host.a65
+
+
+usb.i65
+
+
+   27 T:1000                                    ; ---------------------------------------------------------------------------------------
+   28 T:1000                                    ; usbdev_init parameter
+
+   33 T:1000                                    ; ---------------------------------------------------------------------------------------
+   34 T:1000                                    ; USB setup packet
+
+   44 T:1000                                    ; ---------------------------------------------------------------------------------------
+   45 T:1000                                    ; USB host control structure
+   46 T:1000                                    ; interface to the various usb_* functions
+
+   60 T:1000                                    ; ---------------------------------------------------------------------------------------
+   61 T:1000                                    ; input value to the poll routine when carry is set
+
+   65 T:1000                                    ; ---------------------------------------------------------------------------------------
+   66 T:1000                                    ; return value from usb_cb_detected on success (CLC)
+
+   71 T:1000                                    ; ---------------------------------------------------------------------------------------
+   72 T:1000                                    ; poll register struct
+   73 T:1000                                    ; used to register an endpoint poll callback
+
+   80 T:1000                                    ; ---------------------------------------------------------------------------------------
+   81 T:1000                                    ; USB standard values
+
+   83 T:1000                                    ; PID Values
+
+sl811_host.i65
+
+
+   31 T:1000                                    ; SL811 I/O addresses - Host
+
+   35 T:1000                                    ; SL811 host register set
+
+   69 T:1000                                    ; bit mask for host control register HOSTCTL
+
+   79 T:1000                                    ; control reg 1 (main control, reg 5) masks
+
+   89 T:1000                                    ; control reg 2 masks
+
+   95 T:1000                                    ; relevant bits in the interrupt status register
+
+sl811_host.a65
+
+
+hostmsg.i65
+
+
+debug.i65
+
+
+sl811_host.a65
+
+
+   68 T:1000                                     .( 
+
+   70 T:1000                                     .zero 
+
+   72 Z:0004                                    ;ctrlptr =ZUDEVPTR1
+   73 Z:0004                                    ;#define ctrlptr ZUDEVPTR1
+   74 Z:0004  00 00                    ctrlptr   .word 0
+
+   76 Z:0006                                    ;.importzp ZUDEVPTR1
+
+   78 Z:0006                                     .bss 
+
+   80 B:4000  00                       len       .byt 0
+   81 B:4001  00                       cnt       .byt 0
+   82 B:4002  00                       rcnt      .byt 0
+   83 B:4003  00                       endpt     .byt 0
+   84 B:4004  00                       pream     .byt 0
+   85 B:4005  00                       rootspd   .byt 0
+   86 B:4006  00                       maxpklen  .byt 0
+   87 B:4007  00                       flags     .byt 0
+   88 B:4008  00 00                    retries   .word 0
+
+   90 B:400a                                     .text 
+
+   92 T:1000                                    ;-----------------------------------------------------------
+   93 T:1000                                    ; initialization
+
+   95 T:1000                                    ; check
+   96 T:1000                           usb_host_init .( 
+   97 T:1000  20 8c 11                           jsr getversion
+   98 T:1003  b0 0f                              bcs err
+   99 T:1005  a9 00                              lda #0
+  100 T:1007  a2 00                              ldx #0
+  100 T:1009  20 b0 13                           jsr storeregh
+  101 T:100c  a2 05                              ldx #5
+  101 T:100e  20 b0 13                           jsr storeregh
+  102 T:1011  20 af 10                           jsr clearirq
+  103 T:1014  60                       err       rts 
+  104 T:1015                                     .) 
+
+  106 T:1015                           usb_host_polldev .( 
+  107 T:1015  a2 0d                              ldx #13
+  107 T:1017  20 b7 13                           jsr loadregh
+  108 T:101a  29 40                              and #$40
+  109 T:101c  f0 09                              beq found
+  110 T:101e  a9 40                              lda #$40
+  111 T:1020  a2 0d                              ldx #13
+  111 T:1022  20 b0 13                           jsr storeregh
+  112 T:1025  38                                 sec 
+  113 T:1026  60                                 rts 
+  114 T:1027  18                       found     clc 
+  115 T:1028  60                                 rts 
+  116 T:1029                                     .) 
+
+  118 T:1029                                    ; init the sl811
+  119 T:1029                           usb_host_devinit .( 
+  120 T:1029  20 cb 11                           jsr usbreset
+
+  122 T:102c  20 af 10                           jsr clearirq
+
+  124 T:102f  a9 0a                              lda #10
+  125 T:1031  20 00 00                           jsr pause
+
+  127 T:1034  20 c3 11                           jsr queryusbdevice
+  128 T:1037  f0 07                              beq device
+
+  130 T:1039  20 af 10                           jsr clearirq
+  131 T:103c  a9 00                    nodev     lda #0          ; no device found error condition
+  132 T:103e  38                                 sec                    ; error
+  133 T:103f  60                                 rts 
+  134 T:1040                           device    
+  135 T:1040  a9 01                              lda #1
+  136 T:1042  20 00 00                           jsr pause
+  137 T:1045  20 c3 11                           jsr queryusbdevice
+  138 T:1048  d0 f2                              bne nodev
+
+  140 T:104a                                    ; continue
+
+  142 T:104a  20 cb 11                           jsr usbreset                ; reset attached device
+
+  144 T:104d  a2 0d                              ldx #13
+  144 T:104f  20 b7 13                           jsr loadregh
+  145 T:1052  29 80                              and #$80
+  146 T:1054  d0 03                              bne fullspeed
+  147 T:1056                                    ; low speed
+  148 T:1056  a9 00                              lda #0
+  149 T:1058  2c                                 .byt $2c
+  150 T:1059                           fullspeed 
+  151 T:1059  a9 01                              lda #1
+  152 T:105b  8d 05 40                           sta rootspd             ; save speed of root hub/device
+  153 T:105e  18                                 clc 
+  154 T:105f  60                                 rts 
+  155 T:1060                                     .) 
+
+  157 T:1060                           usb_host_reset .( 
+
+  159 T:1060  aa                                 tax 
+  160 T:1061  d0 18                              bne init_full
+
+  162 T:1063                                    ; init chip for low speed device
+  163 T:1063                           init_low  
+  164 T:1063                                    ; init chip
+  165 T:1063                                    ; swap for low speed
+  166 T:1063  a9 ee                              lda #($80&&$2e)'0f$40
+  167 T:1065  a2 0f                              ldx #15
+  167 T:1067  20 b0 13                           jsr storeregh
+
+  169 T:106a  a9 e0                              lda #$e0
+  170 T:106c  a2 0e                              ldx #14
+  170 T:106e  20 b0 13                           jsr storeregh
+
+  172 T:1071                                    ; see datasheet page 11, SOF_ENA must come after setting SOF counter
+  173 T:1071  a9 21                              lda #$01&&$20
+  174 T:1073  a2 05                              ldx #5
+  174 T:1075  20 b0 13                           jsr storeregh
+
+  176 T:1078  4c 90 10                           jmp setupusb
+
+  178 T:107b                                    ; init chip for full speed device
+  179 T:107b                           init_full 
+  180 T:107b                                    ; init chip
+  181 T:107b                                    ; swap only for low speed
+  182 T:107b  a9 ae                              lda #($80&&$2e)
+  183 T:107d  a2 0f                              ldx #15
+  183 T:107f  20 b0 13                           jsr storeregh
+
+  185 T:1082  a9 e0                              lda #$e0
+  186 T:1084  a2 0e                              ldx #14
+  186 T:1086  20 b0 13                           jsr storeregh
+
+  188 T:1089                                    ; see datasheet page 11, SOF_ENA must come after setting SOF counter
+  189 T:1089  a9 01                              lda #$01
+  190 T:108b  a2 05                              ldx #5
+  190 T:108d  20 b0 13                           jsr storeregh
+
+  192 T:1090                           setupusb  
+  193 T:1090  a9 00                              lda #0
+  194 T:1092  a2 02                              ldx #2
+  194 T:1094  20 b0 13                           jsr storeregh
+
+  196 T:1097  a9 50                              lda #$50             ; SOF PID, endpoint 0 
+  197 T:1099  a2 03                              ldx #3
+  197 T:109b  20 b0 13                           jsr storeregh
+
+  199 T:109e  a9 00                              lda #0             ; USB address
+  200 T:10a0  a2 04                              ldx #4
+  200 T:10a2  20 b0 13                           jsr storeregh
+
+  202 T:10a5  a9 01                              lda #$01             ; ARM the SOF generation
+  203 T:10a7  20 eb 11                           jsr hostcmd
+
+  205 T:10aa  a9 19                              lda #25
+  206 T:10ac  20 00 00                           jsr pause
+
+  208 T:10af                                    ; clear the interrupt status(?)
+  209 T:10af                           clearirq  
+  210 T:10af  a9 ff                              lda #$ff
+  211 T:10b1  a2 0d                              ldx #13
+  211 T:10b3  20 b0 13                           jsr storeregh
+  212 T:10b6  60                                 rts 
+  213 T:10b7                                     .) 
+
+  215 T:10b7                                    ; set params from the HOST_CTRL_* struct
+  216 T:10b7                           set_params .( 
+
+  221 T:10b7  a0 00                              ldy #0
+  222 T:10b9  b1 04                              lda (ctrlptr),y
+  223 T:10bb  a2 04                              ldx #4
+  223 T:10bd  20 b0 13                           jsr storeregh
+
+  227 T:10c0  c8                                 iny                    ; HOST_CTRL_ENDPOINT
+  228 T:10c1  b1 04                              lda (ctrlptr),y
+  229 T:10c3  8d 03 40                           sta endpt
+
+  234 T:10c6  c8                                 iny                    ; HOST_CTRL_SPEED
+  235 T:10c7  b1 04                              lda (ctrlptr),y
+  236 T:10c9  20 a9 11                           jsr set_pream
+
+  241 T:10cc  c8                                 iny                    ; HOST_CTRL_FLAGS
+  242 T:10cd  b1 04                              lda (ctrlptr),y
+  243 T:10cf  8d 07 40                           sta flags
+
+  245 T:10d2  c8                                 iny                    ; HOST_CTRL_MAXPKLEN low
+  246 T:10d3  b1 04                              lda (ctrlptr),y
+  247 T:10d5  8d 06 40                           sta maxpklen
+
+  253 T:10d8  c9 41                              cmp #$41             ; we currently support only full speed, i.e. up to 64 byte
+  254 T:10da  b0 16                              bcs lenerr                ; equals or larger than $41, than error
+  255 T:10dc  c8                                 iny                    ; HOST_CTRL_MAXPKLEN hi
+  256 T:10dd  b1 04                              lda (ctrlptr),y
+  257 T:10df  d0 11                              bne lenerr
+
+  259 T:10e1  c8                                 iny                    ; HOST_CTRL_BUFLEN low
+  260 T:10e2  b1 04                              lda (ctrlptr),y         ; buflen
+  261 T:10e4  c9 f1                              cmp #$f1
+  262 T:10e6  b0 0a                              bcs lenerr                ; we currently support only up to $f0 byte transfers (max sl811h buffer)
+  263 T:10e8  8d 00 40                           sta len
+
+  267 T:10eb  c8                                 iny 
+  268 T:10ec  b1 04                              lda (ctrlptr),y
+  269 T:10ee  d0 02                              bne lenerr                ; we currently support only up to 64 byte transfers
+
+  271 T:10f0  18                                 clc 
+  272 T:10f1  60                                 rts 
+
+  274 T:10f2  a9 f6                    lenerr    lda #<-10
+
+  276 T:10f4  38                                 sec 
+  277 T:10f5  60                                 rts 
+  278 T:10f6                                     .) 
+
+  280 T:10f6                           usb_host_get .( 
+  281 T:10f6  85 04                              sta ctrlptr
+  282 T:10f8  84 05                              sty ctrlptr+1
+
+  284 T:10fa  20 b7 10                           jsr set_params
+  285 T:10fd  b0 05                              bcs end
+
+  287 T:10ff                                    ; jump into the data_control method
+  288 T:10ff  20 f8 12                           jsr get_in
+  289 T:1102  90 29                              bcc tobuf                ; jump into sl811h_control
+  290 T:1104  60                       end       rts 
+  291 T:1105                                     .) 
+
+  293 T:1105                           usb_host_control .( 
+  294 T:1105  85 04                              sta ctrlptr
+  295 T:1107  84 05                              sty ctrlptr+1
+  296 T:1109                                    ; copy ctrl msg to sl811h buffer
+
+  301 T:1109  a2 10                              ldx #$10
+  302 T:110b  a0 0a                              ldy #10
+  303 T:110d                           c1        
+  304 T:110d  8e 00 00                           stx SL811_HOST                ; ERRATA says not to use the autoincrement feature... :-(
+  305 T:1110  b1 04                              lda (ctrlptr),y
+  306 T:1112  8d 01 00                           sta SL811_HOST+1          ; setup packet into sl811 buffer
+
+  310 T:1115  e8                                 inx 
+  311 T:1116  c8                                 iny 
+  312 T:1117  c0 12                              cpy #10+8
+  313 T:1119  d0 f2                              bne c1
+
+  315 T:111b                                    ; set sl811h parameters from HOST_CTRL_*
+  316 T:111b  20 b7 10                           jsr set_params
+  317 T:111e  b0 18                              bcs err
+
+  319 T:1120                                    ; host to device or device to host
+  320 T:1120  a0 0a                              ldy #10
+  321 T:1122  b1 04                              lda (ctrlptr),y
+  322 T:1124  10 13                              bpl send_out
+
+  324 T:1126                                    ; device to host (e.g. get descriptors etc)
+  325 T:1126                           recv_in   
+  326 T:1126  a9 00                              lda #0             ; receive
+  327 T:1128  20 24 12                           jsr data_control
+  328 T:112b  b0 0b                              bcs err
+  329 T:112d                           tobuf     
+  330 T:112d                                    ; copy received bytes from sl811h to buffer
+  331 T:112d  aa                                 tax                    ; save number of transferred bytes
+
+  338 T:112e                                    ; set ctrlptr to data buffer address
+  339 T:112e  20 4a 11                           jsr ptr_to_buffer
+
+  341 T:1131                                    ; copy data from sl811h to buffer
+  342 T:1131  8a                                 txa 
+  343 T:1132  48                                 pha 
+  344 T:1133  20 72 11                           jsr tobuffer
+  345 T:1136  68                                 pla                    ; bytes transferred
+  346 T:1137  18                                 clc 
+  347 T:1138                           err       
+  348 T:1138  60                                 rts 
+
+  350 T:1139                           send_out  
+  351 T:1139  a0 06                              ldy #6
+  352 T:113b  b1 04                              lda (ctrlptr),y
+  353 T:113d  aa                                 tax                    ; number of bytes to tx
+
+  355 T:113e                                    ; set ctrlptr to data buffer address
+  356 T:113e  20 4a 11                           jsr ptr_to_buffer
+
+  358 T:1141                                    ; copy data from buffer to sl811h
+  359 T:1141  20 58 11                           jsr frombuffer
+
+  361 T:1144  a9 80                              lda #$80             ; send
+  362 T:1146  20 24 12                           jsr data_control
+  363 T:1149  60                                 rts 
+  364 T:114a                                     .) 
+
+  366 T:114a                           ptr_to_buffer .( 
+  367 T:114a  a0 08                              ldy #8             ; put buffer address into ctrlptr
+  368 T:114c  b1 04                              lda (ctrlptr),y
+  369 T:114e  48                                 pha 
+  370 T:114f  c8                                 iny 
+  371 T:1150  b1 04                              lda (ctrlptr),y
+  372 T:1152  85 05                              sta ctrlptr+1
+  373 T:1154  68                                 pla 
+  374 T:1155  85 04                              sta ctrlptr
+  375 T:1157  60                                 rts 
+  376 T:1158                                     .) 
+
+  379 T:1158                                    ; xr has number of bytes to transfer to sl811 host buffer
+  380 T:1158                           frombuffer .( 
+  381 T:1158                                    ; copy desc to buffer
+  382 T:1158  8a                                 txa 
+  383 T:1159  f0 16                              beq end
+  384 T:115b  8d 01 40                           sta cnt
+  385 T:115e  a2 18                              ldx #$18
+  386 T:1160  a0 00                              ldy #0
+  387 T:1162                           desc1     
+  388 T:1162                                    ; ERRATA says not to use the autoincrement feature 
+  389 T:1162  8e 00 00                           stx SL811_HOST
+  390 T:1165  b1 04                              lda (ctrlptr),y
+  391 T:1167  8d 01 00                           sta SL811_HOST+1
+  392 T:116a  e8                                 inx 
+  393 T:116b  c8                                 iny 
+  394 T:116c  ce 01 40                           dec cnt
+  395 T:116f  d0 f1                              bne desc1
+  396 T:1171                           end       
+  397 T:1171  60                                 rts 
+  398 T:1172                                     .) 
+
+  400 T:1172                                    ; xr has number of bytes to transfer from sl811 host buffer
+  401 T:1172                           tobuffer  .( 
+  402 T:1172                                    ; copy desc to buffer
+  403 T:1172  8a                                 txa 
+  404 T:1173  f0 16                              beq end
+  405 T:1175  8d 01 40                           sta cnt
+  406 T:1178  a2 10                              ldx #$10
+  407 T:117a  a0 00                              ldy #0
+  408 T:117c                           desc1     
+  409 T:117c                                    ; ERRATA says not to use the autoincrement feature 
+  410 T:117c  8e 00 00                           stx SL811_HOST
+  411 T:117f  ad 01 00                           lda SL811_HOST+1
+  412 T:1182  91 04                              sta (ctrlptr),y
+  413 T:1184  e8                                 inx 
+  414 T:1185  c8                                 iny 
+  415 T:1186  ce 01 40                           dec cnt
+  416 T:1189  d0 f1                              bne desc1
+  417 T:118b  60                       end       rts 
+  418 T:118c                                     .) 
+
+  420 T:118c                                    ; get chip version
+  421 T:118c                           getversion .( 
+  422 T:118c  a2 0e                              ldx #14
+  422 T:118e  20 b7 13                           jsr loadregh
+  423 T:1191  29 f0                              and #$f0
+  424 T:1193  c9 10                              cmp #$10
+  425 T:1195  d0 05                              bne no12
+  426 T:1197  a9 12                              lda #$12
+  427 T:1199  4c a7 11                           jmp ini1
+  428 T:119c  c9 20                    no12      cmp #$20
+  429 T:119e  d0 05                              bne no15
+  430 T:11a0  a9 15                              lda #$15
+  431 T:11a2  4c a7 11                           jmp ini1
+  432 T:11a5  38                       no15      sec 
+  433 T:11a6  60                                 rts 
+  434 T:11a7  18                       ini1      clc 
+  435 T:11a8  60                                 rts 
+  436 T:11a9                                     .) 
+
+  438 T:11a9                                    ; set the preamble variable
+  439 T:11a9                                    ; in: AC = device speed, rootspd = hub speed
+  440 T:11a9                                    ; out: set pream to $80 when device is low, but hub is high
+  441 T:11a9                                    ; must preserve y
+  442 T:11a9                                    ; SYNCSOF ensures this first USB Tx starts such that the other packets
+  443 T:11a9                                    ; do not interfere with the following SOF
+  444 T:11a9                                    ; should only be set on full speed
+  445 T:11a9                           set_pream .( 
+  446 T:11a9  cd 05 40                           cmp rootspd
+  447 T:11ac  f0 0d                              beq same_speed                ; both either low or full, then no preamble
+  448 T:11ae  c9 00                              cmp #0             ; is device low
+  449 T:11b0  d0 03                              bne no_pream                ; no, device is high (and hub low, then no preamble)
+  450 T:11b2  a9 a0                              lda #$80&&$20       ; device is low, thus hub is full, therefore preamble
+  451 T:11b4  2c                                 .byt $2c
+  452 T:11b5                           no_pream  
+  453 T:11b5  a9 00                              lda #0
+  454 T:11b7  8d 04 40                 setp      sta pream
+  455 T:11ba  60                                 rts 
+  456 T:11bb                           same_speed 
+  457 T:11bb  c9 00                              cmp #0
+  458 T:11bd  f0 f8                              beq setp             ; both, host and device are low speed, thus set no preamble and no sync_sof
+  459 T:11bf  a9 20                              lda #$20
+  460 T:11c1  d0 f4                              bne setp             ; both are full speed, so set sync_sof; jmp always
+  461 T:11c3                                     .) 
+
+  463 T:11c3                                    ; check USB device detection
+  464 T:11c3                                    ; AC=0 device detected
+  465 T:11c3                                    ; AC!=0 device not present
+  466 T:11c3                           queryusbdevice .( 
+  467 T:11c3  a2 0d                              ldx #13
+  467 T:11c5  20 b7 13                           jsr loadregh
+  468 T:11c8  29 40                              and #$40
+  469 T:11ca  60                                 rts 
+  470 T:11cb                                     .) 
+
+  472 T:11cb                                    ; reset the chip and USB 
+  473 T:11cb                           usbreset  .( 
+  474 T:11cb                                    ; init chip
+  475 T:11cb  a9 ae                              lda #($80&&$2e)
+  476 T:11cd  a2 0f                              ldx #15
+  476 T:11cf  20 b0 13                           jsr storeregh
+
+  478 T:11d2                                    ; reset bus
+  479 T:11d2  a9 08                              lda #$08
+  480 T:11d4  a2 05                              ldx #5
+  480 T:11d6  20 b0 13                           jsr storeregh
+
+  482 T:11d9                                    ; wait at least 50ms
+  483 T:11d9  a9 05                              lda #5
+  484 T:11db  20 00 00                           jsr pause
+
+  486 T:11de                                    ; "un-"reset bus
+  487 T:11de  a9 00                              lda #$00
+  488 T:11e0  a2 05                              ldx #5
+  488 T:11e2  20 b0 13                           jsr storeregh
+
+  490 T:11e5                                    ; wait another 100ms at least before USB tx can start
+  491 T:11e5  a9 05                              lda #5
+  492 T:11e7  20 00 00                           jsr pause
+  493 T:11ea  60                                 rts 
+  494 T:11eb                                     .) 
+
+  496 T:11eb                                    ; execute a host command
+  497 T:11eb                                    ; and wait for done via interrupt status
+  498 T:11eb                           hostcmd   .( 
+  499 T:11eb  48                                 pha                    ; save x and y
+
+  501 T:11ec  a9 80                              lda #128
+  502 T:11ee  8d 08 40                           sta retries
+  503 T:11f1  8d 09 40                           sta retries+1
+
+  505 T:11f4  a9 00                              lda #0
+  506 T:11f6  a2 00                              ldx #0
+  506 T:11f8  20 b0 13                           jsr storeregh                ; init 
+
+  508 T:11fb  a9 01                              lda #$01             ; endpoint 0 int
+  509 T:11fd  a2 0d                              ldx #13
+  509 T:11ff  20 b0 13                           jsr storeregh
+
+  511 T:1202  68                                 pla 
+  512 T:1203  a2 00                              ldx #0
+  512 T:1205  20 b0 13                           jsr storeregh                ; send command to process 
+
+  514 T:1208  a2 0d                    cmd1      ldx #13
+  514 T:120a  20 b7 13                           jsr loadregh                ; check interrupt 
+  515 T:120d  29 01                              and #$01
+  516 T:120f  d0 0c                              bne cmdok                ; no interrupt yet
+
+  518 T:1211  ce 08 40                           dec retries
+  519 T:1214  d0 f2                              bne cmd1
+  520 T:1216  ce 09 40                           dec retries+1
+  521 T:1219  d0 ed                              bne cmd1
+  522 T:121b  38                                 sec 
+  523 T:121c  24                                 .byt $24
+  524 T:121d                           cmdok     
+  525 T:121d  18                                 clc 
+  526 T:121e  a2 03                              ldx #3
+  526 T:1220  20 b7 13                           jsr loadregh                ; load packet status
+  527 T:1223  60                                 rts 
+  528 T:1224                                     .) 
+
+  530 T:1224                                    ; input:
+  531 T:1224                                    ; buffer at $10 is filled with 8 byte control req
+  532 T:1224                                    ; if output then buffer at $18 has data to send
+  533 T:1224                                    ; endpt, len, FNADDR register must be set in advance
+  534 T:1224                                    ; pream variable has $80 if low speed device on high speed root hub
+  535 T:1224                           data_control .( 
+
+  537 T:1224  8d 01 40                           sta cnt             ; 0=receive, $80=send
+
+  539 T:1227                                     .( 
+  540 T:1227  a0 0a                              ldy #10             ; retry count
+
+  542 T:1229  a9 10                    sb2       lda #$10
+  543 T:122b  a2 01                              ldx #1
+  543 T:122d  20 b0 13                           jsr storeregh
+
+  545 T:1230  a9 08                              lda #8
+  546 T:1232  a2 02                              ldx #2
+  546 T:1234  20 b0 13                           jsr storeregh
+
+  548 T:1237  a9 d0                              lda #$d0             ; SETUP PID, endpoint 0
+  549 T:1239  0d 03 40                           ora endpt
+  550 T:123c  a2 03                              ldx #3
+  550 T:123e  20 b0 13                           jsr storeregh
+
+  552 T:1241  a9 07                              lda #$01&&$04&&$02
+  553 T:1243  0d 04 40                           ora pream
+  554 T:1246  20 eb 11                           jsr hostcmd
+  555 T:1249  b0 05                              bcs cmdl
+  556 T:124b  aa                                 tax 
+  557 T:124c  29 06                              and #$02&&$04       ; if no packet timeout (4) or error (2)
+  558 T:124e  f0 0e                              beq sendrecv                ; then go to data stage
+  559 T:1250                           cmdl      
+  560 T:1250  8a                                 txa 
+  561 T:1251  48                                 pha                    ; save error code
+  562 T:1252  a9 01                              lda #1
+  563 T:1254  20 00 00                           jsr pause
+  564 T:1257  68                                 pla 
+  565 T:1258  88                                 dey 
+  566 T:1259  d0 ce                              bne sb2
+
+  576 T:125b  4c ac 13                           jmp error
+  577 T:125e                                     .) 
+
+  579 T:125e                           sendrecv  
+  580 T:125e  ad 01 40                           lda cnt
+  581 T:1261  30 03                              bmi send_out
+  582 T:1263  4c f8 12                           jmp get_in
+  583 T:1266                           send_out  
+  584 T:1266                                    ;----------------------------
+  585 T:1266                                    ; data stage out, send data
+
+  587 T:1266                                     .( 
+
+  589 T:1266  ad 00 40                           lda len
+  590 T:1269  f0 59                              beq doneout                ; test
+
+  592 T:126b  8d 01 40                           sta cnt             ; bytes still to send
+
+  594 T:126e  a0 0a                              ldy #10             ; retry count
+
+  596 T:1270                           sb2       
+
+  603 T:1270  a9 18                              lda #$18             ; the data is copied behind the setup packet
+  604 T:1272  18                                 clc 
+  605 T:1273  6d 00 40                           adc len             ; plus length gives end of buffer
+  606 T:1276  38                                 sec 
+  607 T:1277  ed 01 40                           sbc cnt             ; minus bytes to send gives start of packet
+  608 T:127a  a2 01                              ldx #1
+  608 T:127c  20 b0 13                           jsr storeregh
+
+  613 T:127f  ad 06 40                           lda maxpklen
+  614 T:1282  cd 01 40                           cmp cnt
+  615 T:1285  90 03                              bcc fullpk
+  616 T:1287  ad 01 40                           lda cnt             ; number of bytes to tx less (or equal) than full packet
+  617 T:128a                           fullpk    
+  618 T:128a  a2 02                              ldx #2
+  618 T:128c  20 b0 13                           jsr storeregh
+
+  623 T:128f  a9 10                              lda #$10             ; OUT PID, endpoint 0
+  624 T:1291  0d 03 40                           ora endpt
+  625 T:1294  a2 03                              ldx #3
+  625 T:1296  20 b0 13                           jsr storeregh
+
+  627 T:1299  a9 07                              lda #$01&&$04&&$02
+  628 T:129b  0d 04 40                           ora pream
+  629 T:129e  20 eb 11                           jsr hostcmd
+  630 T:12a1  b0 05                              bcs cmdl
+  631 T:12a3  aa                                 tax 
+
+  636 T:12a4  29 06                              and #$02&&$04       ; if no packet timeout (4) or error (2)
+  637 T:12a6  f0 0e                              beq txnext                ; then check next packet
+  638 T:12a8                           cmdl      
+  639 T:12a8  8a                                 txa 
+  640 T:12a9  48                                 pha                    ; save error code
+  641 T:12aa  a9 01                              lda #1
+  642 T:12ac  20 00 00                           jsr pause
+  643 T:12af  68                                 pla 
+  644 T:12b0  88                                 dey 
+  645 T:12b1  d0 bd                              bne sb2
+
+  658 T:12b3  4c ac 13                           jmp error
+  659 T:12b6                           txnext    
+  660 T:12b6  ad 01 40                           lda cnt
+  661 T:12b9  f0 09                              beq doneout
+  662 T:12bb  38                                 sec 
+  663 T:12bc  ed 06 40                           sbc maxpklen
+  664 T:12bf  8d 01 40                           sta cnt
+  665 T:12c2  b0 ac                              bcs sb2             ; next packet (even if cnt is zero - zero len packet marks end)
+  666 T:12c4                           doneout   
+  667 T:12c4                                     .) 
+  668 T:12c4                                    ;----------------------------
+  669 T:12c4                                    ; end of data out stage,
+  670 T:12c4                                    ; next rx ack from device
+  671 T:12c4                                     .( 
+  672 T:12c4                                    ; 
+  673 T:12c4                           againin   
+  674 T:12c4  a9 0a                              lda #10
+  675 T:12c6  8d 01 40                           sta cnt             ; retry count
+  676 T:12c9                           retryloop 
+
+  681 T:12c9  a9 00                              lda #0
+  682 T:12cb  a2 02                              ldx #2
+  682 T:12cd  20 b0 13                           jsr storeregh
+
+  684 T:12d0  a9 90                              lda #$90
+  685 T:12d2  0d 03 40                           ora endpt
+  686 T:12d5  a2 03                              ldx #3
+  686 T:12d7  20 b0 13                           jsr storeregh
+
+  688 T:12da  a9 03                              lda #$01&&$00&&$02
+  689 T:12dc  0d 04 40                           ora pream
+  690 T:12df  20 eb 11                           jsr hostcmd
+  691 T:12e2  b0 11                              bcs errorx
+
+  693 T:12e4  aa                                 tax 
+
+  698 T:12e5  29 42                              and #$40&&$02
+  699 T:12e7  d0 07                              bne retry                ; NAK
+
+  701 T:12e9  8a                                 txa 
+  702 T:12ea  29 a0                              and #$80&&$20
+  703 T:12ec  d0 07                              bne errorx                ; stall or overflow
+  704 T:12ee                                    ; ACK
+
+  706 T:12ee  18                                 clc 
+  707 T:12ef  60                                 rts 
+
+  709 T:12f0  ce 01 40                 retry     dec cnt
+  710 T:12f3  d0 d4                              bne retryloop
+
+  712 T:12f5  4c ac 13                 errorx    jmp error
+  713 T:12f8                                     .) 
+
+  715 T:12f8                                    ;----------------------------
+  716 T:12f8                                    ; data stage in, receive data
+  717 T:12f8                           get_in    .( 
+  718 T:12f8  ad 00 40                           lda len
+  719 T:12fb  8d 01 40                           sta cnt             ; bytes still to receive
+  720 T:12fe  a9 0a                              lda #10             ; retry count
+  721 T:1300  8d 02 40                           sta rcnt
+  722 T:1303                           againin   
+
+  729 T:1303                                    ; TODO check preamble clearing
+  730 T:1303                                    ; lda pream
+  731 T:1303                                    ; and #$ff-HOSTCTL_TOGGLE
+  732 T:1303                                    ; sta pream
+
+  734 T:1303  ad 00 40                           lda len             ; total bytes
+  735 T:1306  38                                 sec 
+  736 T:1307  ed 01 40                           sbc cnt             ; minus bytes to received
+  737 T:130a  18                                 clc                    ; gives bytes already received
+  738 T:130b  69 10                              adc #$10             ; add sl811 buffer offset
+  739 T:130d  a2 01                              ldx #1
+  739 T:130f  20 b0 13                           jsr storeregh                ; receive buffer address
+
+  741 T:1312  ad 01 40                           lda cnt             ; set rx length to number of bytes to receive
+  742 T:1315  a2 02                              ldx #2
+  742 T:1317  20 b0 13                           jsr storeregh
+
+  747 T:131a  a9 90                              lda #$90             ; IN PID
+  748 T:131c  0d 03 40                           ora endpt
+  749 T:131f  a2 03                              ldx #3
+  749 T:1321  20 b0 13                           jsr storeregh
+  750 T:1324  a9 03                              lda #$01&&$00&&$02
+  751 T:1326  0d 04 40                           ora pream
+  752 T:1329  20 eb 11                           jsr hostcmd
+
+  754 T:132c  aa                                 tax 
+
+  760 T:132d                                    ; timeout helps for receiving timeouts
+  761 T:132d  29 06                              and #$04&&$02
+  762 T:132f  d0 3e                              bne doretry
+
+  764 T:1331  2c 07 40                           bit flags             ; check HOST_FLAG_IGNORE_NAK in bit 7
+  765 T:1334  30 05                              bmi no_nak
+  766 T:1336  8a                                 txa 
+  767 T:1337  29 40                              and #$40
+  768 T:1339  d0 34                              bne doretry
+  769 T:133b                           no_nak    
+  770 T:133b  8a                                 txa 
+  771 T:133c  29 a0                              and #$80&&$20       ; STALL or Overflow
+  772 T:133e  d0 6c                              bne error
+
+  774 T:1340                                    ; move DATA0/DATA1 bit into preamble so 
+  775 T:1340                                    ; ack packet to device has correct toggle bit
+  776 T:1340  8a                                 txa 
+  777 T:1341  0a                                 asl 
+  778 T:1342  0a                                 asl 
+  779 T:1343  0a                                 asl 
+  780 T:1344  29 40                              and #$40
+  781 T:1346  0d 04 40                           ora pream
+  782 T:1349  8d 04 40                           sta pream
+
+  784 T:134c                                    ; ok
+
+  786 T:134c  ad 00 40                           lda len
+  787 T:134f  f0 56                              beq nodata
+
+  789 T:1351  a2 04                              ldx #4
+  789 T:1353  20 b7 13                           jsr loadregh                ; number of bytes still to transfer
+  790 T:1356  aa                                 tax                    ; so we can compute number of bytes transferred
+
+  795 T:1357  f0 1e                              beq donein
+  796 T:1359  cd 01 40                           cmp cnt             ; num of bytes still to transfer same as num of bytes requested?
+  797 T:135c  f0 19                              beq donein                ; zero length package received, done; then cnt is num of bytes already
+
+  799 T:135e  18                                 clc                    ; prepare for two's complement, therefore clc instead of sec
+  800 T:135f  ed 01 40                           sbc cnt             ; substract last number of bytes to receive; gives negative number of bytes rx'd
+  801 T:1362  49 ff                              eor #$ff             ; two's complement = negative, the one offset is done by clc instead of sec before sbc
+
+  803 T:1364  cd 06 40                           cmp maxpklen             ; maximum packet length
+  804 T:1367  d0 0e                              bne donein                ; last packet not max length then end
+
+  806 T:1369  8e 01 40                           stx cnt
+  807 T:136c  4c 03 13                           jmp againin
+
+  809 T:136f                           doretry   
+  810 T:136f  ce 02 40                           dec rcnt
+  811 T:1372  f0 38                              beq error
+  812 T:1374  4c 03 13                           jmp againin             ; rx next packet 
+  813 T:1377                           donein    
+  814 T:1377  8e 01 40                           stx cnt             ; bytes still to transfer to reach len
+  815 T:137a  ad 00 40                           lda len
+  816 T:137d  38                                 sec 
+  817 T:137e  ed 01 40                           sbc cnt             ; len-cnt is number of bytes transferred
+  818 T:1381  8d 01 40                           sta cnt             ; save
+
+  820 T:1384                                     .) 
+
+  822 T:1384                                    ;----------------------------
+  823 T:1384                                    ; end of data in stage,
+  824 T:1384                                    ; send control data ack
+  825 T:1384                                     .( 
+  826 T:1384                           againout  
+
+  831 T:1384  a9 00                              lda #0
+  832 T:1386  a2 02                              ldx #2
+  832 T:1388  20 b0 13                           jsr storeregh
+
+  834 T:138b  a9 10                              lda #$10
+  835 T:138d  0d 03 40                           ora endpt
+  836 T:1390  a2 03                              ldx #3
+  836 T:1392  20 b0 13                           jsr storeregh
+
+  838 T:1395  a9 07                              lda #$01&&$04&&$02 ; | HOSTCTL_SYNCSOF
+  839 T:1397  0d 04 40                           ora pream
+  840 T:139a  20 eb 11                           jsr hostcmd
+  841 T:139d  b0 0d                              bcs error
+
+  843 T:139f  aa                                 tax 
+
+  851 T:13a0  29 42                              and #$40&&$02
+  852 T:13a2  d0 e0                              bne againout             ; NAK
+
+  854 T:13a4  8a                                 txa 
+  855 T:13a5  30 05                              bmi error                ; stall - no need for overflow, as we send, not receive
+  856 T:13a7                                    ; ACK
+  857 T:13a7                           nodata    
+  858 T:13a7  ad 01 40                           lda cnt             ; number of bytes transferred
+  859 T:13aa  18                                 clc 
+  860 T:13ab  60                                 rts 
+  861 T:13ac                                     .) 
+
+  863 T:13ac  a0 fb                    error     ldy #<-5
+  864 T:13ae  38                                 sec 
+  865 T:13af  60                                 rts 
+  866 T:13b0                                     .) 
+
+  868 T:13b0                           storeregh .( 
+  869 T:13b0  8e 00 00                           stx SL811_HOST
+  870 T:13b3  8d 01 00                           sta SL811_HOST+1
+  871 T:13b6  60                                 rts 
+  872 T:13b7                                     .) 
+
+  874 T:13b7                           loadregh  .( 
+  875 T:13b7  8e 00 00                           stx SL811_HOST
+  876 T:13ba  ad 01 00                           lda SL811_HOST+1
+  877 T:13bd  60                                 rts 
+  878 T:13be                                     .) 
+
+  880 T:13be                                     .) 
