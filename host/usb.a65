@@ -151,7 +151,7 @@
 
 
 	.zero
-ptr	.word 0
+;ptr	.word 0
 	.text
 
 #include "hub.a65"

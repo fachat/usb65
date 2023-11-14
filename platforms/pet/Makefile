@@ -5,13 +5,13 @@ DEVICE_FILES=	../../device/usbdev.a65 ../../device/usbdev.i65 \
 HOST_FILES=../../host/hub.a65 ../../host/usb.a65 \
 	../../host/usbgen.a65 ../../host/kbd.a65 ../../host/detect.a65 \
 	../../host/hostmsg.a65 ../../host/hostmsg.i65
-DRIVER_FILES=../../drivers/sl811_host.a65 ../../drivers/sl811_host.i65 \
-	../../drivers/max3421e.a65 ../../drivers/max3421e.i65 \
-	../../drivers/max3420e.a65 ../../drivers/max3420e.i65 \
-	../../drivers/spi65b.a65 ../../drivers/spi65b.i65 \
-	../../drivers/sl811_dev.a65 ../../drivers/sl811_dev.i65 \
-	../../drivers/viaspi.a65 ../../drivers/cbmspi.i65 ../../drivers/cbmusb_pet.a65 \
-	../../drivers/upetspi.a65 ../../drivers/upetspi.i65 
+DRIVER_FILES=../../drivers/host/sl811_host.a65 ../../drivers/host/sl811_host.i65 \
+	../../drivers/host/max3421e.a65 ../../drivers/host/max3421e.i65 \
+	../../drivers/device/max3420e.a65 ../../drivers/device/max3420e.i65 \
+	../../drivers/spi/spi65b.a65 ../../drivers/spi/spi65b.i65 \
+	../../drivers/device/sl811_dev.a65 ../../drivers/device/sl811_dev.i65 \
+	../../drivers/spi/viaspi.a65 ../../drivers/spi/cbmspi.i65 ../../drivers/spi/cbmusb_pet.a65 \
+	../../drivers/spi/upetspi.a65 ../../drivers/spi/upetspi.i65 
 COMMON_FILES=../../common/debug.i65 ../../common/debug.a65 ../../common/usb.i65 \
 	../../common/via6522.i65
 

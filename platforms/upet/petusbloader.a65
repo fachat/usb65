@@ -1,0 +1,126 @@
+/*
+    (C) 2011-2013 Andre Fachat
+
+    This file is part of the 6502 USB Host Driver.
+
+    The 6502 USB Host Driver is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The 6502 USB Host Driver is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    Lesser GNU General Public License for more details.
+
+    You should have received a copy of the Lesser GNU General Public License
+    along with the 6502 USB Host Driver. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/*
+ * this code installs the USB driver at the end of the PET 32k RAM
+ * and patches it into the interrupt routine, so that it can
+ * run in background and be used as keyboard driver
+ *
+ * (C) 2011 A. Fachat
+ */
+
+#undef	DEBUG
+#undef	DEBUG_POLL
+#undef	DEBUG_HW
+
+	.(
+
+
+#include "hostmsg.i65"
+
+; pointer to size of memory for PET BASIC 4
+MEMSIZ		=$34
+; pointer to begin of string area
+FRETOP		=$30
+
+
+	.text
+
+	.word $0401
+	.word eol
+	.word 10
+	.byt $9e, "1040"
+	.byt $3a, $9c
+	.byt 0
+eol	.word 0
+	.dsb 1040-*, $aa
+
+start	.(
+
+len	=8*1024
+
+	.zero
+ptr1	.word 0
+ptr2	.word 0
+	.text
+
+&newpos	=$8000-len
+
+	lda #<tomove
+	sta ptr1
+	lda #>tomove
+	sta ptr1+1
+	lda #<newpos
+	sta ptr2
+	lda #>newpos
+	sta ptr2+1
+
+	ldx #>(len+255)		; number of pages
+	ldy #0
+loop	lda (ptr1),y
+	sta (ptr2),y
+	iny
+	bne loop
+	inc ptr1+1
+	inc ptr2+1
+	dex
+	bne loop
+
+	;done with move, protect the memory by updating BASIC top
+	; CLR is done after the SYS from the basic prg
+	lda #<newpos
+	sta MEMSIZ
+	sta FRETOP
+	lda #>newpos
+	sta MEMSIZ+1
+	sta FRETOP+1
+
+	jsr newpos+15		; init_scr		; init virtual screen
+
+	;lda #14
+	;jsr printc		; lower/upper case mode
+
+	ldy #MSG_COPYRIGHT
+	jsr newpos+3
+
+#ifdef PET
+	lda #3
+	sta $e809
+#endif
+	jsr newpos+18		; startint - to keep MOTOR save
+	
+	jsr newpos		; usb_init
+	bcc hwfound
+	tay			; error number
+	jsr newpos+3		; print
+
+	jsr newpos+6		; scr_flush
+
+	jsr newpos+21		; endint
+	rts
+hwfound
+	jsr newpos+9		;prversion
+
+	jmp newpos+12		; start2
+
+tomove
+	; assemble code for new position
+	.)
+
+

@@ -87,7 +87,7 @@ max3421e.a65
   106 T:1006                                    ; should set GPX if used, is not used here
   107 T:1006  a9 00                              lda #<MAX3421E_EnMask
   107 T:1008  20 00 00                           jsr spi_enable
-  107 T:100b  a9 8a                              lda #((17<<3))'0f$02
+  107 T:100b  a9 8a                              lda #((17<<3))|$02
   107 T:100d  20 00 00                           jsr spi_wra
   107 T:1010  a9 18                              lda #($10+$08)
   107 T:1012  20 00 00                           jsr spi_wra
@@ -96,7 +96,7 @@ max3421e.a65
   109 T:1018                                    ; reset (leaves FDUPSPI and INTLEVEL as they are)
   110 T:1018  a9 00                              lda #<MAX3421E_EnMask
   110 T:101a  20 00 00                           jsr spi_enable
-  110 T:101d  a9 7a                              lda #(15<<3)'0f$02
+  110 T:101d  a9 7a                              lda #(15<<3)|$02
   110 T:101f  20 00 00                           jsr spi_wra
   110 T:1022  a9 20                              lda #($20)
   110 T:1024  20 00 00                           jsr spi_wra
@@ -104,7 +104,7 @@ max3421e.a65
   111 T:102a                                    ; deassert reset
   112 T:102a  a9 00                              lda #<MAX3421E_EnMask
   112 T:102c  20 00 00                           jsr spi_enable
-  112 T:102f  a9 7a                              lda #(15<<3)'0f$02
+  112 T:102f  a9 7a                              lda #(15<<3)|$02
   112 T:1031  20 00 00                           jsr spi_wra
   112 T:1034  a9 00                              lda #(0)
   112 T:1036  20 00 00                           jsr spi_wra
@@ -113,7 +113,7 @@ max3421e.a65
   114 T:103c                                    ; wait for oscillator (chip reset stops it, need to wait for coming up)
   115 T:103c  a9 00                    l0        lda #<MAX3421E_EnMask
   115 T:103e  20 00 00                           jsr spi_enable
-  115 T:1041  a9 68                              lda #13<<3&&$00
+  115 T:1041  a9 68                              lda #13<<3|$00
   115 T:1043  20 00 00                           jsr spi_wra
   115 T:1046  20 00 00                           jsr spi_wra
   115 T:1049  48                                 pha 
@@ -128,7 +128,7 @@ max3421e.a65
   122 T:1052                                    ; weak pull down on D+ and D- for SAMPLEBUS to work
   123 T:1052  a9 00                              lda #<MAX3421E_EnMask
   123 T:1054  20 00 00                           jsr spi_enable
-  123 T:1057  a9 da                              lda #(27<<3)'0f$02
+  123 T:1057  a9 da                              lda #(27<<3)|$02
   123 T:1059  20 00 00                           jsr spi_wra
   123 T:105c  a9 c1                              lda #($01+$80+$40)
   123 T:105e  20 00 00                           jsr spi_wra
@@ -160,7 +160,7 @@ max3421e.a65
 
   144 T:1073  a9 00                              lda #<MAX3421E_EnMask
   144 T:1075  20 00 00                           jsr spi_enable
-  144 T:1078  a9 c8                              lda #25<<3&&$00
+  144 T:1078  a9 c8                              lda #25<<3|$00
   144 T:107a  20 00 00                           jsr spi_wra
   144 T:107d  20 00 00                           jsr spi_wra
   144 T:1080  48                                 pha 
@@ -181,7 +181,7 @@ max3421e.a65
   150 T:108e  48                                 pha 
   150 T:108f  a9 00                              lda #<MAX3421E_EnMask
   150 T:1091  20 00 00                           jsr spi_enable
-  150 T:1094  a9 ca                              lda #(25<<3)'0f$02
+  150 T:1094  a9 ca                              lda #(25<<3)|$02
   150 T:1096  20 00 00                           jsr spi_wra
   150 T:1099  68                                 pla 
   150 T:109a  20 00 00                           jsr spi_wra
@@ -278,7 +278,7 @@ max3421e.a65
   205 T:10e0                           init_low  
   206 T:10e0  a9 00                              lda #<MAX3421E_EnMask
   206 T:10e2  20 00 00                           jsr spi_enable
-  206 T:10e5  a9 d8                              lda #27<<3&&$00
+  206 T:10e5  a9 d8                              lda #27<<3|$00
   206 T:10e7  20 00 00                           jsr spi_wra
   206 T:10ea  20 00 00                           jsr spi_wra
   206 T:10ed  48                                 pha 
@@ -292,7 +292,7 @@ max3421e.a65
   212 T:10f7                           init_full 
   213 T:10f7  a9 00                              lda #<MAX3421E_EnMask
   213 T:10f9  20 00 00                           jsr spi_enable
-  213 T:10fc  a9 d8                              lda #27<<3&&$00
+  213 T:10fc  a9 d8                              lda #27<<3|$00
   213 T:10fe  20 00 00                           jsr spi_wra
   213 T:1101  20 00 00                           jsr spi_wra
   213 T:1104  48                                 pha 
@@ -303,7 +303,7 @@ max3421e.a65
   216 T:110b  48                                 pha 
   216 T:110c  a9 00                              lda #<MAX3421E_EnMask
   216 T:110e  20 00 00                           jsr spi_enable
-  216 T:1111  a9 da                              lda #(27<<3)'0f$02
+  216 T:1111  a9 da                              lda #(27<<3)|$02
   216 T:1113  20 00 00                           jsr spi_wra
   216 T:1116  68                                 pla 
   216 T:1117  20 00 00                           jsr spi_wra
@@ -312,7 +312,7 @@ max3421e.a65
   218 T:111d                                    ; set 0 as peripheral address for a start
   219 T:111d  a9 00                              lda #<MAX3421E_EnMask
   219 T:111f  20 00 00                           jsr spi_enable
-  219 T:1122  a9 e2                              lda #(28<<3)'0f$02
+  219 T:1122  a9 e2                              lda #(28<<3)|$02
   219 T:1124  20 00 00                           jsr spi_wra
   219 T:1127  a9 00                              lda #(0)
   219 T:1129  20 00 00                           jsr spi_wra
@@ -324,7 +324,7 @@ max3421e.a65
   224 T:1132                                    ; clear connect IRQ, as may be set by changing LOWSPEED
   225 T:1132  a9 00                              lda #<MAX3421E_EnMask
   225 T:1134  20 00 00                           jsr spi_enable
-  225 T:1137  a9 ca                              lda #(25<<3)'0f$02
+  225 T:1137  a9 ca                              lda #(25<<3)|$02
   225 T:1139  20 00 00                           jsr spi_wra
   225 T:113c  a9 20                              lda #($20)
   225 T:113e  20 00 00                           jsr spi_wra
@@ -343,7 +343,7 @@ max3421e.a65
   244 T:1149  48                                 pha 
   244 T:114a  a9 00                              lda #<MAX3421E_EnMask
   244 T:114c  20 00 00                           jsr spi_enable
-  244 T:114f  a9 e2                              lda #(28<<3)'0f$02
+  244 T:114f  a9 e2                              lda #(28<<3)|$02
   244 T:1151  20 00 00                           jsr spi_wra
   244 T:1154  68                                 pla 
   244 T:1155  20 00 00                           jsr spi_wra
@@ -415,7 +415,7 @@ max3421e.a65
   312 T:11a2                                    ; clear xfer done irq, just in case
   313 T:11a2  a9 00                              lda #<MAX3421E_EnMask
   313 T:11a4  20 00 00                           jsr spi_enable
-  313 T:11a7  a9 ca                              lda #(25<<3)'0f$02
+  313 T:11a7  a9 ca                              lda #(25<<3)|$02
   313 T:11a9  20 00 00                           jsr spi_wra
   313 T:11ac  a9 80                              lda #($80)
   313 T:11ae  20 00 00                           jsr spi_wra
@@ -445,14 +445,14 @@ max3421e.a65
   341 T:11ca                                    ; clear rvdavirq (twice, for double buffering, just in case)
   342 T:11ca  a9 00                              lda #<MAX3421E_EnMask
   342 T:11cc  20 00 00                           jsr spi_enable
-  342 T:11cf  a9 ca                              lda #(25<<3)'0f$02
+  342 T:11cf  a9 ca                              lda #(25<<3)|$02
   342 T:11d1  20 00 00                           jsr spi_wra
   342 T:11d4  a9 04                              lda #($04)
   342 T:11d6  20 00 00                           jsr spi_wra
   342 T:11d9  20 00 00                           jsr spi_disable
   343 T:11dc  a9 00                              lda #<MAX3421E_EnMask
   343 T:11de  20 00 00                           jsr spi_enable
-  343 T:11e1  a9 ca                              lda #(25<<3)'0f$02
+  343 T:11e1  a9 ca                              lda #(25<<3)|$02
   343 T:11e3  20 00 00                           jsr spi_wra
   343 T:11e6  a9 04                              lda #($04)
   343 T:11e8  20 00 00                           jsr spi_wra
@@ -469,7 +469,7 @@ max3421e.a65
   353 T:11fb  48                                 pha 
   353 T:11fc  a9 00                              lda #<MAX3421E_EnMask
   353 T:11fe  20 00 00                           jsr spi_enable
-  353 T:1201  a9 ea                              lda #(29<<3)'0f$02
+  353 T:1201  a9 ea                              lda #(29<<3)|$02
   353 T:1203  20 00 00                           jsr spi_wra
   353 T:1206  68                                 pla 
   353 T:1207  20 00 00                           jsr spi_wra
@@ -507,7 +507,7 @@ max3421e.a65
   392 T:1239                                    ; read number of bytes
   393 T:1239  a9 00                              lda #<MAX3421E_EnMask
   393 T:123b  20 00 00                           jsr spi_enable
-  393 T:123e  a9 30                              lda #6<<3&&$00
+  393 T:123e  a9 30                              lda #6<<3|$00
   393 T:1240  20 00 00                           jsr spi_wra
   393 T:1243  20 00 00                           jsr spi_wra
   393 T:1246  48                                 pha 
@@ -551,7 +551,7 @@ max3421e.a65
   436 T:127f                                    ; clear data available interrupt
   437 T:127f  a9 00                              lda #<MAX3421E_EnMask
   437 T:1281  20 00 00                           jsr spi_enable
-  437 T:1284  a9 ca                              lda #(25<<3)'0f$02
+  437 T:1284  a9 ca                              lda #(25<<3)|$02
   437 T:1286  20 00 00                           jsr spi_wra
   437 T:1289  a9 04                              lda #($04)
   437 T:128b  20 00 00                           jsr spi_wra
@@ -582,7 +582,7 @@ max3421e.a65
   461 T:12b2  a0 03                              ldy #3
   462 T:12b4  a9 00                              lda #<MAX3421E_EnMask
   462 T:12b6  20 00 00                           jsr spi_enable
-  462 T:12b9  a9 f8                              lda #31<<3&&$00
+  462 T:12b9  a9 f8                              lda #31<<3|$00
   462 T:12bb  20 00 00                           jsr spi_wra
   462 T:12be  20 00 00                           jsr spi_wra
   462 T:12c1  48                                 pha 
@@ -696,7 +696,7 @@ max3421e.a65
   564 T:1334  48                                 pha 
   564 T:1335  a9 00                              lda #<MAX3421E_EnMask
   564 T:1337  20 00 00                           jsr spi_enable
-  564 T:133a  a9 ea                              lda #(29<<3)'0f$02
+  564 T:133a  a9 ea                              lda #(29<<3)|$02
   564 T:133c  20 00 00                           jsr spi_wra
   564 T:133f  68                                 pla 
   564 T:1340  20 00 00                           jsr spi_wra
@@ -719,7 +719,7 @@ max3421e.a65
   580 T:135c  a9 00                              lda #<MAX3421E_EnMask
   580 T:135e  20 00 00                           jsr spi_enable
 
-  582 T:1361  a9 12                              lda #2<<3&&2 ; OR#2 is write bit
+  582 T:1361  a9 12                              lda #2<<3|2 ; OR#2 is write bit
   583 T:1363  20 00 00                           jsr spi_wra
 
   585 T:1366  a0 00                              ldy #0
@@ -737,7 +737,7 @@ max3421e.a65
   597 T:1377  48                                 pha 
   597 T:1378  a9 00                              lda #<MAX3421E_EnMask
   597 T:137a  20 00 00                           jsr spi_enable
-  597 T:137d  a9 3a                              lda #(7<<3)'0f$02
+  597 T:137d  a9 3a                              lda #(7<<3)|$02
   597 T:137f  20 00 00                           jsr spi_wra
   597 T:1382  68                                 pla 
   597 T:1383  20 00 00                           jsr spi_wra
@@ -793,7 +793,7 @@ max3421e.a65
   646 T:13d6  a0 03                              ldy #3
   647 T:13d8  a9 00                              lda #<MAX3421E_EnMask
   647 T:13da  20 00 00                           jsr spi_enable
-  647 T:13dd  a9 f8                              lda #31<<3&&$00
+  647 T:13dd  a9 f8                              lda #31<<3|$00
   647 T:13df  20 00 00                           jsr spi_wra
   647 T:13e2  20 00 00                           jsr spi_wra
   647 T:13e5  48                                 pha 
@@ -822,7 +822,7 @@ max3421e.a65
   668 T:1400                                    ; clear xfer done irq, just in case
   669 T:1400  a9 00                              lda #<MAX3421E_EnMask
   669 T:1402  20 00 00                           jsr spi_enable
-  669 T:1405  a9 ca                              lda #(25<<3)'0f$02
+  669 T:1405  a9 ca                              lda #(25<<3)|$02
   669 T:1407  20 00 00                           jsr spi_wra
   669 T:140a  a9 80                              lda #($80)
   669 T:140c  20 00 00                           jsr spi_wra
@@ -832,7 +832,7 @@ max3421e.a65
   679 T:1413  48                                 pha 
   679 T:1414  a9 00                              lda #<MAX3421E_EnMask
   679 T:1416  20 00 00                           jsr spi_enable
-  679 T:1419  a9 f2                              lda #(30<<3)'0f$02
+  679 T:1419  a9 f2                              lda #(30<<3)|$02
   679 T:141b  20 00 00                           jsr spi_wra
   679 T:141e  68                                 pla 
   679 T:141f  20 00 00                           jsr spi_wra
@@ -843,7 +843,7 @@ max3421e.a65
 
   686 T:1425  a9 00                              lda #<MAX3421E_EnMask
   686 T:1427  20 00 00                           jsr spi_enable
-  686 T:142a  a9 c8                              lda #25<<3&&$00
+  686 T:142a  a9 c8                              lda #25<<3|$00
   686 T:142c  20 00 00                           jsr spi_wra
   686 T:142f  20 00 00                           jsr spi_wra
   686 T:1432  48                                 pha 
@@ -854,7 +854,7 @@ max3421e.a65
   689 T:143b  48                                 pha 
   689 T:143c  a9 00                              lda #<MAX3421E_EnMask
   689 T:143e  20 00 00                           jsr spi_enable
-  689 T:1441  a9 ca                              lda #(25<<3)'0f$02
+  689 T:1441  a9 ca                              lda #(25<<3)|$02
   689 T:1443  20 00 00                           jsr spi_wra
   689 T:1446  68                                 pla 
   689 T:1447  20 00 00                           jsr spi_wra
@@ -863,7 +863,7 @@ max3421e.a65
   691 T:144d                                    ; check result
   692 T:144d  a9 00                              lda #<MAX3421E_EnMask
   692 T:144f  20 00 00                           jsr spi_enable
-  692 T:1452  a9 f8                              lda #31<<3&&$00
+  692 T:1452  a9 f8                              lda #31<<3|$00
   692 T:1454  20 00 00                           jsr spi_wra
   692 T:1457  20 00 00                           jsr spi_wra
   692 T:145a  48                                 pha 
@@ -883,7 +883,7 @@ max3421e.a65
   711 T:1462  a9 00                              lda #<MAX3421E_EnMask
   711 T:1464  20 00 00                           jsr spi_enable
 
-  713 T:1467  a9 22                              lda #(4<<3)'0f2; OR#2 to set the write bit
+  713 T:1467  a9 22                              lda #(4<<3)|2; OR#2 to set the write bit
   714 T:1469  20 00 00                           jsr spi_wra
 
   716 T:146c                                    ; copy control message to chip fifo
@@ -933,7 +933,7 @@ max3421e.a65
   758 T:1497  d0 16                              bne no_pream                ; no, device is high (and hub low, then no preamble)
   759 T:1499  a9 00                              lda #<MAX3421E_EnMask
   759 T:149b  20 00 00                           jsr spi_enable
-  759 T:149e  a9 d8                              lda #27<<3&&$00
+  759 T:149e  a9 d8                              lda #27<<3|$00
   759 T:14a0  20 00 00                           jsr spi_wra
   759 T:14a3  20 00 00                           jsr spi_wra
   759 T:14a6  48                                 pha 
@@ -944,7 +944,7 @@ max3421e.a65
   762 T:14af                           no_pream  
   763 T:14af  a9 00                              lda #<MAX3421E_EnMask
   763 T:14b1  20 00 00                           jsr spi_enable
-  763 T:14b4  a9 d8                              lda #27<<3&&$00
+  763 T:14b4  a9 d8                              lda #27<<3|$00
   763 T:14b6  20 00 00                           jsr spi_wra
   763 T:14b9  20 00 00                           jsr spi_wra
   763 T:14bc  48                                 pha 
@@ -956,7 +956,7 @@ max3421e.a65
   775 T:14c3  48                                 pha 
   775 T:14c4  a9 00                              lda #<MAX3421E_EnMask
   775 T:14c6  20 00 00                           jsr spi_enable
-  775 T:14c9  a9 da                              lda #(27<<3)'0f$02
+  775 T:14c9  a9 da                              lda #(27<<3)|$02
   775 T:14cb  20 00 00                           jsr spi_wra
   775 T:14ce  68                                 pla 
   775 T:14cf  20 00 00                           jsr spi_wra
@@ -971,7 +971,7 @@ max3421e.a65
 
   784 T:14d6  a9 00                              lda #<MAX3421E_EnMask
   784 T:14d8  20 00 00                           jsr spi_enable
-  784 T:14db  a9 ea                              lda #(29<<3)'0f$02
+  784 T:14db  a9 ea                              lda #(29<<3)|$02
   784 T:14dd  20 00 00                           jsr spi_wra
   784 T:14e0  a9 04                              lda #($04)
   784 T:14e2  20 00 00                           jsr spi_wra
@@ -987,7 +987,7 @@ max3421e.a65
   793 T:14ed                                    ; check bus status
   794 T:14ed  a9 00                              lda #<MAX3421E_EnMask
   794 T:14ef  20 00 00                           jsr spi_enable
-  794 T:14f2  a9 f8                              lda #31<<3&&$00
+  794 T:14f2  a9 f8                              lda #31<<3|$00
   794 T:14f4  20 00 00                           jsr spi_wra
   794 T:14f7  20 00 00                           jsr spi_wra
   794 T:14fa  48                                 pha 
@@ -1002,7 +1002,7 @@ max3421e.a65
 
   802 T:1507  a9 00                              lda #<MAX3421E_EnMask
   802 T:1509  20 00 00                           jsr spi_enable
-  802 T:150c  a9 d8                              lda #27<<3&&$00
+  802 T:150c  a9 d8                              lda #27<<3|$00
   802 T:150e  20 00 00                           jsr spi_wra
   802 T:1511  20 00 00                           jsr spi_wra
   802 T:1514  48                                 pha 
@@ -1024,7 +1024,7 @@ max3421e.a65
   816 T:152d                                    ; clear connect IRQ, as may be set by changing LOWSPEED or SAMPLEBUS
   817 T:152d  a9 00                              lda #<MAX3421E_EnMask
   817 T:152f  20 00 00                           jsr spi_enable
-  817 T:1532  a9 ca                              lda #(25<<3)'0f$02
+  817 T:1532  a9 ca                              lda #(25<<3)|$02
   817 T:1534  20 00 00                           jsr spi_wra
   817 T:1537  a9 20                              lda #($20)
   817 T:1539  20 00 00                           jsr spi_wra
@@ -1057,7 +1057,7 @@ max3421e.a65
   838 T:1547                                    ; switch off sof frames
   839 T:1547  a9 00                              lda #<MAX3421E_EnMask
   839 T:1549  20 00 00                           jsr spi_enable
-  839 T:154c  a9 d8                              lda #27<<3&&$00
+  839 T:154c  a9 d8                              lda #27<<3|$00
   839 T:154e  20 00 00                           jsr spi_wra
   839 T:1551  20 00 00                           jsr spi_wra
   839 T:1554  48                                 pha 
@@ -1067,7 +1067,7 @@ max3421e.a65
   841 T:155b  48                                 pha 
   841 T:155c  a9 00                              lda #<MAX3421E_EnMask
   841 T:155e  20 00 00                           jsr spi_enable
-  841 T:1561  a9 da                              lda #(27<<3)'0f$02
+  841 T:1561  a9 da                              lda #(27<<3)|$02
   841 T:1563  20 00 00                           jsr spi_wra
   841 T:1566  68                                 pla 
   841 T:1567  20 00 00                           jsr spi_wra
@@ -1076,7 +1076,7 @@ max3421e.a65
   843 T:156d                                    ; set BUSRST to 1
   844 T:156d  a9 00                              lda #<MAX3421E_EnMask
   844 T:156f  20 00 00                           jsr spi_enable
-  844 T:1572  a9 ea                              lda #(29<<3)'0f$02
+  844 T:1572  a9 ea                              lda #(29<<3)|$02
   844 T:1574  20 00 00                           jsr spi_wra
   844 T:1577  a9 01                              lda #($01)
   844 T:1579  20 00 00                           jsr spi_wra
@@ -1085,7 +1085,7 @@ max3421e.a65
   846 T:157f                                    ; wait for BUSRST to become 0
   847 T:157f  a9 00                    l0        lda #<MAX3421E_EnMask
   847 T:1581  20 00 00                           jsr spi_enable
-  847 T:1584  a9 e8                              lda #29<<3&&$00
+  847 T:1584  a9 e8                              lda #29<<3|$00
   847 T:1586  20 00 00                           jsr spi_wra
   847 T:1589  20 00 00                           jsr spi_wra
   847 T:158c  48                                 pha 
@@ -1098,7 +1098,7 @@ max3421e.a65
   852 T:1595                                    ; clear frame irq
   853 T:1595  a9 00                              lda #<MAX3421E_EnMask
   853 T:1597  20 00 00                           jsr spi_enable
-  853 T:159a  a9 ca                              lda #(25<<3)'0f$02
+  853 T:159a  a9 ca                              lda #(25<<3)|$02
   853 T:159c  20 00 00                           jsr spi_wra
   853 T:159f  a9 40                              lda #($40)
   853 T:15a1  20 00 00                           jsr spi_wra
@@ -1110,7 +1110,7 @@ max3421e.a65
   858 T:15a7                                    ; generates keep-alive pulses.
   859 T:15a7  a9 00                              lda #<MAX3421E_EnMask
   859 T:15a9  20 00 00                           jsr spi_enable
-  859 T:15ac  a9 d8                              lda #27<<3&&$00
+  859 T:15ac  a9 d8                              lda #27<<3|$00
   859 T:15ae  20 00 00                           jsr spi_wra
   859 T:15b1  20 00 00                           jsr spi_wra
   859 T:15b4  48                                 pha 
@@ -1120,7 +1120,7 @@ max3421e.a65
   861 T:15bb  48                                 pha 
   861 T:15bc  a9 00                              lda #<MAX3421E_EnMask
   861 T:15be  20 00 00                           jsr spi_enable
-  861 T:15c1  a9 da                              lda #(27<<3)'0f$02
+  861 T:15c1  a9 da                              lda #(27<<3)|$02
   861 T:15c3  20 00 00                           jsr spi_wra
   861 T:15c6  68                                 pla 
   861 T:15c7  20 00 00                           jsr spi_wra
@@ -1133,7 +1133,7 @@ max3421e.a65
   867 T:15cd                                    ; wait for first frame
   868 T:15cd  a9 00                    l1        lda #<MAX3421E_EnMask
   868 T:15cf  20 00 00                           jsr spi_enable
-  868 T:15d2  a9 c8                              lda #25<<3&&$00
+  868 T:15d2  a9 c8                              lda #25<<3|$00
   868 T:15d4  20 00 00                           jsr spi_wra
   868 T:15d7  20 00 00                           jsr spi_wra
   868 T:15da  48                                 pha 
@@ -1144,7 +1144,7 @@ max3421e.a65
   871 T:15e3  48                                 pha 
   871 T:15e4  a9 00                              lda #<MAX3421E_EnMask
   871 T:15e6  20 00 00                           jsr spi_enable
-  871 T:15e9  a9 ca                              lda #(25<<3)'0f$02
+  871 T:15e9  a9 ca                              lda #(25<<3)|$02
   871 T:15eb  20 00 00                           jsr spi_wra
   871 T:15ee  68                                 pla 
   871 T:15ef  20 00 00                           jsr spi_wra

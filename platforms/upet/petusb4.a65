@@ -50,11 +50,11 @@ irqsave .word 0
 
 	.zero
 ; print routine pointer
-ZPRINTPTR	.word 0		;=$1f
+&ZPRINTPTR	.word 0		;=$1f
 ; device driver pointer
 ZUDEVPTR1	.word 0		;=$1f
 ; general pointer within USB code
-ptr		.word 0		;=$11
+&ptr		.word 0		;=$11
 ; debug code pointer (to save inline string address)
 &dbg_ptr		.word 0		;=$b1
 

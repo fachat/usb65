@@ -160,7 +160,7 @@ sl811_host.a65
   163 T:1063                           init_low  
   164 T:1063                                    ; init chip
   165 T:1063                                    ; swap for low speed
-  166 T:1063  a9 ee                              lda #($80&&$2e)'0f$40
+  166 T:1063  a9 ee                              lda #($80|$2e)|$40
   167 T:1065  a2 0f                              ldx #15
   167 T:1067  20 b0 13                           jsr storeregh
 
@@ -169,7 +169,7 @@ sl811_host.a65
   170 T:106e  20 b0 13                           jsr storeregh
 
   172 T:1071                                    ; see datasheet page 11, SOF_ENA must come after setting SOF counter
-  173 T:1071  a9 21                              lda #$01&&$20
+  173 T:1071  a9 21                              lda #$01|$20
   174 T:1073  a2 05                              ldx #5
   174 T:1075  20 b0 13                           jsr storeregh
 
@@ -179,7 +179,7 @@ sl811_host.a65
   179 T:107b                           init_full 
   180 T:107b                                    ; init chip
   181 T:107b                                    ; swap only for low speed
-  182 T:107b  a9 ae                              lda #($80&&$2e)
+  182 T:107b  a9 ae                              lda #($80|$2e)
   183 T:107d  a2 0f                              ldx #15
   183 T:107f  20 b0 13                           jsr storeregh
 
@@ -428,7 +428,7 @@ sl811_host.a65
   447 T:11ac  f0 0d                              beq same_speed                ; both either low or full, then no preamble
   448 T:11ae  c9 00                              cmp #0             ; is device low
   449 T:11b0  d0 03                              bne no_pream                ; no, device is high (and hub low, then no preamble)
-  450 T:11b2  a9 a0                              lda #$80&&$20       ; device is low, thus hub is full, therefore preamble
+  450 T:11b2  a9 a0                              lda #$80|$20       ; device is low, thus hub is full, therefore preamble
   451 T:11b4  2c                                 .byt $2c
   452 T:11b5                           no_pream  
   453 T:11b5  a9 00                              lda #0
@@ -454,7 +454,7 @@ sl811_host.a65
   472 T:11cb                                    ; reset the chip and USB 
   473 T:11cb                           usbreset  .( 
   474 T:11cb                                    ; init chip
-  475 T:11cb  a9 ae                              lda #($80&&$2e)
+  475 T:11cb  a9 ae                              lda #($80|$2e)
   476 T:11cd  a2 0f                              ldx #15
   476 T:11cf  20 b0 13                           jsr storeregh
 
@@ -542,12 +542,12 @@ sl811_host.a65
   550 T:123c  a2 03                              ldx #3
   550 T:123e  20 b0 13                           jsr storeregh
 
-  552 T:1241  a9 07                              lda #$01&&$04&&$02
+  552 T:1241  a9 07                              lda #$01|$04|$02
   553 T:1243  0d 04 40                           ora pream
   554 T:1246  20 eb 11                           jsr hostcmd
   555 T:1249  b0 05                              bcs cmdl
   556 T:124b  aa                                 tax 
-  557 T:124c  29 06                              and #$02&&$04       ; if no packet timeout (4) or error (2)
+  557 T:124c  29 06                              and #$02|$04       ; if no packet timeout (4) or error (2)
   558 T:124e  f0 0e                              beq sendrecv                ; then go to data stage
   559 T:1250                           cmdl      
   560 T:1250  8a                                 txa 
@@ -601,13 +601,13 @@ sl811_host.a65
   625 T:1294  a2 03                              ldx #3
   625 T:1296  20 b0 13                           jsr storeregh
 
-  627 T:1299  a9 07                              lda #$01&&$04&&$02
+  627 T:1299  a9 07                              lda #$01|$04|$02
   628 T:129b  0d 04 40                           ora pream
   629 T:129e  20 eb 11                           jsr hostcmd
   630 T:12a1  b0 05                              bcs cmdl
   631 T:12a3  aa                                 tax 
 
-  636 T:12a4  29 06                              and #$02&&$04       ; if no packet timeout (4) or error (2)
+  636 T:12a4  29 06                              and #$02|$04       ; if no packet timeout (4) or error (2)
   637 T:12a6  f0 0e                              beq txnext                ; then check next packet
   638 T:12a8                           cmdl      
   639 T:12a8  8a                                 txa 
@@ -647,18 +647,18 @@ sl811_host.a65
   686 T:12d5  a2 03                              ldx #3
   686 T:12d7  20 b0 13                           jsr storeregh
 
-  688 T:12da  a9 03                              lda #$01&&$00&&$02
+  688 T:12da  a9 03                              lda #$01|$00|$02
   689 T:12dc  0d 04 40                           ora pream
   690 T:12df  20 eb 11                           jsr hostcmd
   691 T:12e2  b0 11                              bcs errorx
 
   693 T:12e4  aa                                 tax 
 
-  698 T:12e5  29 42                              and #$40&&$02
+  698 T:12e5  29 42                              and #$40|$02
   699 T:12e7  d0 07                              bne retry                ; NAK
 
   701 T:12e9  8a                                 txa 
-  702 T:12ea  29 a0                              and #$80&&$20
+  702 T:12ea  29 a0                              and #$80|$20
   703 T:12ec  d0 07                              bne errorx                ; stall or overflow
   704 T:12ee                                    ; ACK
 
@@ -701,14 +701,14 @@ sl811_host.a65
   748 T:131c  0d 03 40                           ora endpt
   749 T:131f  a2 03                              ldx #3
   749 T:1321  20 b0 13                           jsr storeregh
-  750 T:1324  a9 03                              lda #$01&&$00&&$02
+  750 T:1324  a9 03                              lda #$01|$00|$02
   751 T:1326  0d 04 40                           ora pream
   752 T:1329  20 eb 11                           jsr hostcmd
 
   754 T:132c  aa                                 tax 
 
   760 T:132d                                    ; timeout helps for receiving timeouts
-  761 T:132d  29 06                              and #$04&&$02
+  761 T:132d  29 06                              and #$04|$02
   762 T:132f  d0 3e                              bne doretry
 
   764 T:1331  2c 07 40                           bit flags             ; check HOST_FLAG_IGNORE_NAK in bit 7
@@ -718,7 +718,7 @@ sl811_host.a65
   768 T:1339  d0 34                              bne doretry
   769 T:133b                           no_nak    
   770 T:133b  8a                                 txa 
-  771 T:133c  29 a0                              and #$80&&$20       ; STALL or Overflow
+  771 T:133c  29 a0                              and #$80|$20       ; STALL or Overflow
   772 T:133e  d0 6c                              bne error
 
   774 T:1340                                    ; move DATA0/DATA1 bit into preamble so 
@@ -782,14 +782,14 @@ sl811_host.a65
   836 T:1390  a2 03                              ldx #3
   836 T:1392  20 b0 13                           jsr storeregh
 
-  838 T:1395  a9 07                              lda #$01&&$04&&$02 ; | HOSTCTL_SYNCSOF
+  838 T:1395  a9 07                              lda #$01|$04|$02 ; | HOSTCTL_SYNCSOF
   839 T:1397  0d 04 40                           ora pream
   840 T:139a  20 eb 11                           jsr hostcmd
   841 T:139d  b0 0d                              bcs error
 
   843 T:139f  aa                                 tax 
 
-  851 T:13a0  29 42                              and #$40&&$02
+  851 T:13a0  29 42                              and #$40|$02
   852 T:13a2  d0 e0                              bne againout             ; NAK
 
   854 T:13a4  8a                                 txa 

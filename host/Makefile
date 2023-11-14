@@ -1,9 +1,9 @@
 
-all: usb.o65
+all: usb.o65 hostmsg.o65
 
 
-usb.o65: *.a65
-	xa -R -U -I../common -XMASM -o usb.o65 usb.a65
+%.o65: %.a65
+	xa -R -U -I../common -XMASM -o $@ $<
 
 clean:
 	rm -f *.o65
