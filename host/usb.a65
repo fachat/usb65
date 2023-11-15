@@ -112,37 +112,11 @@
 	.(
 
 
-#define	MAX_PACKET	$f0
-
-#if 0	/******************************************************/
-
-#ifdef SL811_HOST
-#define SL811_HOST      $ec98
-#include "sl811_host.a65"
-#endif
-
-#ifdef MAX3421_HOST
-
-#ifdef SPI65_SPI
-#include "spi65b.i65"
-#include "spi65b.a65"
-#endif
-#ifdef CBMSPI_SPI
-#include "cbmspi.i65"
-#include "cbmusb_pet.a65"
-#endif
-#ifdef UPET_SPI
-#include "upetspi.i65"
-#include "upetspi.a65"
-#endif
-
-#include "max3421e.a65"
-#endif
-#endif 	
+MAX_PACKET	=$f0
 
 /******************************************************/
 
-#define	DEBUG
+;#define	DEBUG
 
 #include "debug.a65"
 #include "usb.i65"
@@ -231,16 +205,16 @@ tptr	.word 0		; temporary var
 
 curslot .byt 0		; current index in device table
 
-devnum	.dsb MAX_DEV	; valid device numbers, >127 is unused
-devdata	.dsb MAX_DEV	; transparent data given at device register, given back at poll
-devspeed .dsb MAX_DEV	; speed for device
-devendpt .dsb MAX_DEV	; speed for device
-devparent .dsb MAX_DEV	; parent device number (<0 for root device)
-devplenl .dsb MAX_DEV	; low byte of maximum packet length for device
-devplenh .dsb MAX_DEV	; high byte of maximum packet length for device
-devptrl	.dsb MAX_DEV	; low byte of poll address 
-devptrh	.dsb MAX_DEV	; high byte of poll address
-devtog .dsb MAX_DEV	; current toggle value (from CTRL_FLAGS)
+devnum		.dsb MAX_DEV	; valid device numbers, >127 is unused
+devdata		.dsb MAX_DEV	; transparent data given at device register, given back at poll
+devspeed 	.dsb MAX_DEV	; speed for device
+devendpt 	.dsb MAX_DEV	; speed for device
+devparent 	.dsb MAX_DEV	; parent device number (<0 for root device)
+devplenl 	.dsb MAX_DEV	; low byte of maximum packet length for device
+devplenh 	.dsb MAX_DEV	; high byte of maximum packet length for device
+devptrl		.dsb MAX_DEV	; low byte of poll address 
+devptrh		.dsb MAX_DEV	; high byte of poll address
+devtog 		.dsb MAX_DEV	; current toggle value (from CTRL_FLAGS)
 
 ;-----------------------------------------------------------
 ; initialization

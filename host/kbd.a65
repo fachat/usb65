@@ -22,7 +22,7 @@
  * single keyboard only!
  */
 
-#define	DEBUG_KBD
+;#define	DEBUG_KBD
 
 	.(
 
@@ -32,9 +32,9 @@ poll_data
         .byt 0                  ; endpoint number
         .byt 0                  ; transparent poll function data
         .word 0                 ; max packet length from EP descriptor
-        .word kbd_poll_cb       ; hub poll callback function
+        .word kbd_poll_cb       ; poll callback function
 
-get_data .byt 0, 0, 0, HOST_FLAG_IGNORE_NAK
+get_data .byt 0, 0, 0, 0;HOST_FLAG_IGNORE_NAK
         .word 0         ; max endpoint packet size per tx (from EP descriptor)
         .word 8  	; data stage transfer size (possibly multiple tx)
         .word kbdbuf
@@ -155,46 +155,60 @@ std_poll
 	
 	cmp prevmod
 	beq nomod
-	jsr send_mod
+	;jsr send_mod
 nomod
 	tax
-	; only check first character in response (for simplicity)
-	lda kbdbuf+2
-	beq no_process
-	jsr translate
-	bcs no_data
-	cmp prevkey
-	bne no_bounce
-	ldy prevcnt		; same as previous key
-	beq debounced		; count already down to zero, then accept it (key repeat)
-	dec prevcnt		; no, just dec debounce counter
-	clc
-	rts
-no_bounce
-	ldy #BOUNCE_CNT		; debounce for next poll
-	sty prevcnt
-	sta prevkey
-debounced
+	stx kbdbuf	; save modifiers
 
-	; callback to main code when we got a key	
-	jsr usb_kbd_rx_key_cb
-	clc
-	rts
-no_data
-	lda prevcnt
-	beq clr
-	dec prevcnt
-	clc
-	DEXIT("KBD POLL Y")
-	rts
-clr
-	lda #0
-	sta prevkey
-	DDEBUG(ldy prevcnt)
-	DEXIT("KBD POLL X")
+	ldx #0
+keyloop	stx kbdbuf+1	; counter in unused packet field
+	lda kbdbuf+2,x
+sta $8028,x
+	;beq endkloop
+	ldx #0
+kl1	cmp lastkeys,x
+	beq nextkey	; key is in old list - so skip
+	inx
+	cpx #6
+	bne kl1
+	; key is not in old list - so newly pressed
+	ldx kbdbuf	; modifier
+	jsr sendkey	; send it to callback
+	; check next entry in key list
+nextkey	ldx kbdbuf+1
+	inx
+	cpx #6
+	bne keyloop
+	; all key entries checked - copy current to lastkeys
+endkloop
+	ldx #5
+kl2	lda kbdbuf+2,x
+	sta lastkeys,x
+	dex
+	bpl kl2
 no_process
 	clc
 	rts
+
+clrkloop
+	ldx #5
+	lda #0
+kl3	sta lastkeys,x
+	dex
+	bpl kl3
+	clc
+	rts
+	
+sendkey	.(
+	jsr translate
+	bcs no_data
+	; callback to main code when we got a key	
+	jsr usb_kbd_rx_key_cb
+no_data	rts
+	.)
+	.data
+lastkeys .byt 0,0,0,0,0,0
+	.text
 	.)
 
 ; send the modifiers as report to the keyboard, to toggle the LEDs,
@@ -216,6 +230,18 @@ send_mod .(
 ; translate the keycode from the keyboard to the 
 ; PETSCII code
 translate .(
+#if 1
+	.data
+scridx	.byt 0
+	.text
+	ldy scridx
+	sta $8000,y
+	iny
+	cpy #32
+	bcc n
+	ldy #0
+n	sty scridx
+#endif
 	DMSG("TRANSLATE")
 	ldy #<kbd_table
 	sty ptr
@@ -225,11 +251,11 @@ translate .(
 tloop	cmp (ptr),y
 	beq gotit
 	pha
-	lda #4
-	clc
-	adc ptr
-	sta ptr
-	bcc noc
+	iny
+	iny
+	iny
+	iny
+	bne noc
 	inc ptr+1
 noc	lda (ptr),y
 	beq end		; end of table reached
@@ -238,19 +264,25 @@ noc	lda (ptr),y
 end	pla
 no_key	sec
 	rts
+
 gotit	txa	; ctrl=1, shift=2, alt=4
 	beq no_mod
 	lsr
 	bcs ctrl
 	lsr
 	bcc no_mod
-	ldy #2	; shift
+	iny 	; shift, y+=2
 	.byt $2c
-ctrl	ldy #3	; ctrl
-	.byt $2c
-no_mod	ldy #1
+ctrl	iny 	; ctrl, y+=3
+	iny
+no_mod	iny	; no mod, y+=1
 	lda (ptr),y
 	beq no_key
+#if 1
+	ldy scridx
+	sta $8000,y
+	inc scridx
+#endif
 	clc
 	rts
 	.)
@@ -306,7 +338,7 @@ kbd_table
 	.byt $2f, "[", $7b, 0		; [ (US) ü (DE)
 	.byt $30, "]", $7d, 0		; ] (US) + (DE)
 
-	.byt $32, "\", $7c, 0		; \ (US) # (DE)
+	.byt $32, "\\", $7c, 0		; \ (US) # (DE)
 	.byt $33, ";", ":", 0		; ; (US) ö (DE)
 	.byt $34, "'", 34, 0		; ' (US) ä (DE)
 	.byt $35, "`", "^", 0		; ` (US) ^ (DE)

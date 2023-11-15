@@ -31,6 +31,7 @@
 
 MAX3421E_EnMask=SPIADDR
 
+#define	XMAX	#9	; at $e3 for 80 cols, or $03eb for 40 cols - so use constant
 
 #include "hostmsg.i65"
 
@@ -348,7 +349,7 @@ SCREEN	=SCRBASE
 	sei
 	stx tmpx
 	ldx $9e
-	cpx $e3
+	cpx XMAX
 	bcs full
 	sta $026f,x
 	inc $9e

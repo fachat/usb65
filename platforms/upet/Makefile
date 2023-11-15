@@ -1,6 +1,7 @@
 
 MAIN=upetusb
 TSR=upetusbdrv
+LOADER=upetusbloader
 
 DRIVER_O65=../../drivers/host/max3421e.o65 ../../drivers/spi/upetspi.o65
 HOST_O65=../../host/usb.o65 ../../host/hostmsg.o65
@@ -17,7 +18,7 @@ FILES=$(COMMON_FILES) $(DRIVER_FILES)
 #LINK=reloc65 -bt 1023 -bz 66 -X 
 
 
-all: ${MAIN} ${TSR}
+all: ${MAIN} ${LOADER}
 
 ${DRIVER_O65}:
 	make -C ../../drivers
@@ -29,7 +30,10 @@ ${COMMON_O65}:
 	make -C ../../common
 
 %.o65: %.a65
-	xa -R -U -bt 1023 -I../../common -I../../host -DSPIADDR=2 -o $@ $<
+	xa -R -U -bt 1023 -I../../common -P $*.lst -I../../host -DSPIADDR=2 -o $@ $<
+
+petusbdrv.o65: petusbdrv.a65
+	xa -R -U -bt 24576 -I../../common -P $*.lst -I../../host -DSPIADDR=2 -o $@ $<
 
 ${MAIN}.o65: ${MAIN_O65} ${DRIVER_O65} ${HOST_O65}
 	ldo65 -G -v -v -o $@ $^
@@ -41,7 +45,11 @@ ${TSR}.o65: ${TSR_O65} ${DRIVER_O65} ${HOST_O65} ${COMMON_O65}
 	ldo65 -G -v -v -bt 24576 -o $@ $^
 
 ${TSR}: ${TSR}.o65
-	reloc65 -X -bt 24576 -bz 66 -o $@ $<
+	reloc65 -X -bt 24576 -bz 192 -o $@ $<
+
+${LOADER}: petusbloader.o65 ${TSR}
+	reloc65 -X -bt 1023 -o $@ $<
+	cat ${TSR} >> $@
 
 clean:
 	rm -f *.o65

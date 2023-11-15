@@ -45,7 +45,7 @@ FRETOP		=$30
 	.word $0401
 	.word eol
 	.word 10
-	.byt $9e, "1040"
+	.byt $9e, "1040"	; SYS 1040
 	.byt $3a, $9c
 	.byt 0
 eol	.word 0
@@ -123,4 +123,5 @@ tomove
 	; assemble code for new position
 	.)
 
+	.)
 

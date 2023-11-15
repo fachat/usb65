@@ -60,7 +60,7 @@
 
 ;MAX3421E_EnMask = 0x04
 
-#define	DEBUG
+;#define	DEBUG
 
 #include "usb.i65"
 #include "max3421e.i65"
@@ -84,7 +84,7 @@ endpt	.byt 0
 flags	.byt 0
 maxpklen .byt 0		; maximum allowed size for packet
 cnt	.byt 0
-rcnt	.byt 0
+rcnt	.byt 0		; retry count
 bcnt	.byt 0		; byt count up to len for packet transfer
 /*
 pream	.byt 0
@@ -360,11 +360,12 @@ againin
 	beq noerror	; hrSUCCESS is 0
 
 	cmp #hrSTALL
-	beq error
+	beq error_stall
 	cmp #hrTIMEOUT
-	beq error
+	beq error_timeout
 	cmp #hrNAK
 	bne doretry
+inc $8800+39
 	bit flags	; check HOST_FLAG_IGNORE_NAK in bit 7
 	bpl doretry
 	lda #0
@@ -380,6 +381,11 @@ nodbg 	lda rcnt
 #endif
 	beq error
 	jmp againin
+error_stall
+	;inc $8000+79
+	;jmp error
+error_timeout
+	;inc $8000+78
 error	
 #ifdef DEBUG_HW
 	DMSG("GET_IN ERR")
@@ -402,7 +408,7 @@ noerror
 #endif
 no_nak	
 	sta cnt
-
+sta $8000+38
 	; do we want that much data?
 	clc
 	adc bcnt

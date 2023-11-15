@@ -79,6 +79,19 @@ iniirq  .(
         sta irqvec
         lda #>newirq
         sta irqvec+1
+
+	lda #$3c
+	sta $e813	; disable normal interrupt source (VDRIVE)
+	
+	lda #<10000
+	sta $e840+4	; T1 low
+	lda #>10000
+	sta $e840+5	; T1 high
+	lda #%01000000	; continous timed interrupts T1
+	sta $e840+11	; ACL
+	lda #%11000000
+	sta $e840+14	; IER
+
         cli
         rts
         .)
@@ -99,6 +112,8 @@ newirq  .(
 ;        bne noloop
 ;        jsr DLOOP
 noloop  ;jmp (irqsave)
+
+	lda $e840+4	; read T1 low to clear interrupt
 
         ; the PET sets the MTR line on the tape, no matter what,
         ; esp. with the SENSE line.
@@ -181,7 +196,7 @@ end
 &waitkey .(
 	ldy #MSG_WAIT_KEY
 	jsr print
-l	jsr $f335
+l	jsr $f335	; wait for STOP key
 	bne l
 	rts
 	.)
