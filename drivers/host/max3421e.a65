@@ -20,16 +20,16 @@
  /*
  * external interface:
  * 
- * sl811h_init
- *	checks presence of hardware (SL811); 
+ * usb_host_init
+ *	checks presence of hardware (MAX3421E on SPI); 
  *	return clc when ok, sec when not found 
  *	when found, return version in AC, as BCD
  *	fastcall
- * sl811h_polldev
+ * usb_host_polldev
  *	checks if a device is present.
  *	return clc when device found, sec when not
  *	fastcall
- * sl811h_devinit
+ * usb_host_devinit
  *	init the SL811 and the USB bus
  *	return clc when device found, sec when not
  *	when device is found, return speed in AC
@@ -38,7 +38,7 @@
  *	when device is not found, return error condition in AC
  *	0=no device 
  *	routine is slow, calls pause
- * sl811h_reset
+ * usb_host_reset
  *	reset the bus and configure for correct speed
  *	input: AC=speed
  *	0=low speed
@@ -49,11 +49,11 @@
  *	on success, AC has number of bytes transferred
  * 	on error, AC has error condition
  *
- * sl811h_control
+ * usb_host_control
  *	Do a control transfer. a/y are the address of a 
  * 	control struct
  *
- * sl811h_get
+ * usb_host_get
  *	do an IN transfer. a/y are the address of the 
  *	control struct
  */
@@ -77,7 +77,7 @@ dataptr	.word 0
 	.data
 
 rootspd	.byt 0		; speed (low/full) of attached device (e.g. root hub)
-polled	.byt 0		; when set, device is present
+present	.byt 0		; when set, device is present
 
 len	.byt 0		; length of a (requested IN) packet
 endpt	.byt 0
@@ -113,8 +113,6 @@ retries	.word 0
 
 	; wait for oscillator (chip reset stops it, need to wait for coming up)
 l0	rreg(rUSBIRQ)
-;sta $8000+999
-;inc $8000+998
 	and #bmOSCOKIRQ
 	beq l0
 
@@ -130,7 +128,7 @@ l0	rreg(rUSBIRQ)
 	DMSG("MAX3421 INIT DONE")
 
 	lda #<-1
-	sta polled	; trigger initial device detection check
+	sta present	; trigger initial device detection check
 err	rts
 	.)
 
@@ -138,7 +136,7 @@ err	rts
 #ifdef DEBUG_HW
 	inc $8027
 #endif
-	lda polled
+	lda present
 	bmi check
 
 	rreg(rHIRQ)
@@ -154,7 +152,7 @@ check
 	jsr queryusbdevice
 	bcc notfnd
 nochange
-	lda polled		; set in queryusbdevice
+	lda present		; set in queryusbdevice
 	bne found
 notfnd	sec
 	rts
@@ -224,30 +222,18 @@ setspeed
 	; clear connect IRQ, as may be set by changing LOWSPEED
 	wreg(rHIRQ, bmCONDETIRQ)
 	;lda #<-1
-	;sta polled
+	;sta present
 	rts
 	.)
 
 ; set params from the HOST_CTRL_* struct
 set_params .(
-#if 0 //def DEBUG_HW
-	lda #"/"
-	jsr printc
-#endif
 	ldy #HOST_CTRL_FNADDR
 	lda (ctrlptr),y
-#if 0 //def DEBUG_HW
-	pha
-	jsr hexout
-	pla
-#endif
 	wrac(rPERADDR)
 	iny			; HOST_CTRL_ENDPOINT
 	lda (ctrlptr),y
 	sta endpt
-#if 0 //def DEBUG_HW
-	jsr hexout
-#endif
 
 	iny			; HOST_CTRL_SPEED
 	lda (ctrlptr),y
@@ -260,11 +246,6 @@ set_params .(
 	iny			; HOST_CTRL_MAXPKLEN low
 	lda (ctrlptr),y
 	sta maxpklen
-#if 0 //def DEBUG_HW
-	pha
-	jsr hexout
-	pla
-#endif
 	cmp #$41		; we currently support only full speed, i.e. up to 64 byte
 	bcs lenerr		; equals or larger than $41, than error
 	iny			; HOST_CTRL_MAXPKLEN hi
@@ -276,9 +257,6 @@ set_params .(
 	;cmp #$41
 	;bcs lenerr		; we currently support only up to $f0 byte transfers (max sl811h buffer)
 	sta len	
-#if 0 // def DEBUG_HW
-	jsr hexout
-#endif		
 	iny
 	lda (ctrlptr),y
 	bne lenerr		; we currently support only up to 64 byte transfers
@@ -324,23 +302,19 @@ end	rts
 
 ; IN transfer into buffer as given (in ctrlptr)
 get_in	.(
-#ifdef DEBUG_HW
-	lda endpt
-	;ldx len
-	ldy maxpklen
-	DMSG("GET_IN")
-#endif
 	; set retry count
-	lda #10
+	.(
+	bit flags	; check HOST_FLAG_IGNORE_NAK in bit 7
+	bpl doretry
+	lda #1
+	.byt $2c
+doretry	lda #10
 	sta rcnt
+	.)
 
 	; set byte count
 	lda #0
 	sta bcnt
-
-	; clear rvdavirq (twice, for double buffering, just in case)
-	wreg(rHIRQ, bmRCVDAVIRQ)
-	wreg(rHIRQ, bmRCVDAVIRQ)
 
 	; set toggle
 	ldy #HOST_CTRL_FLAGS
@@ -359,56 +333,28 @@ againin
 	jsr docmd
 	beq noerror	; hrSUCCESS is 0
 
-	cmp #hrSTALL
-	beq error_stall
 	cmp #hrTIMEOUT
-	beq error_timeout
+	beq doretry
 	cmp #hrNAK
-	bne doretry
-inc $8800+39
-	bit flags	; check HOST_FLAG_IGNORE_NAK in bit 7
-	bpl doretry
-	lda #0
-	jmp no_nak
+	bne error
 doretry
 	dec rcnt
-#ifdef DEBUG_HW
-	cmp #hrNAK
-	beq nodbg
-	ldy rcnt
-	DMSG("RETRY IN")
-nodbg 	lda rcnt
-#endif
 	beq error
 	jmp againin
-error_stall
-	;inc $8000+79
-	;jmp error
-error_timeout
-	;inc $8000+78
 error	
-#ifdef DEBUG_HW
-	DMSG("GET_IN ERR")
-#endif
 	ldy #ERR_DEVICE
 	sec
 	rts
 noerror	
+	rreg(rHIRQ)
+	and #bmRCVDAVIRQ
+	beq error
+
 	; transfer data
 	; read number of bytes
 	rreg(rRCVBC)
-#ifdef DEBUG_HW
-	pha
-	lda #"R"
-	jsr printc
-	pla
-	pha
-	jsr hexout
-	pla
-#endif
-no_nak	
 	sta cnt
-sta $8000+38
+
 	; do we want that much data?
 	clc
 	adc bcnt
@@ -553,7 +499,10 @@ do_out .(
 	//DMSG("DO_OUT")
 	; set retry count
 	lda #10
-	sta rcnt
+	bit flags	; check HOST_FLAG_IGNORE_NAK in bit 7
+	bpl retryc
+	lda #1
+retryc	sta rcnt
 
 	; set byte count
 	lda #0
@@ -601,27 +550,42 @@ next	lda (dataptr),y
 nodata
 	; write number of bytes
 	wrac(rSNDBC)
-againout
+
 	; start command
 	lda endpt	; BULK/OUT command is bmOUTNIN ORd with endpoint number
 	ora #tokOUT
 	jsr docmd
-	beq noerror	; hrSUCCESS is 0
+	bne retry
+	jmp noerror	; hrSUCCESS is 0
 
-retry	cmp #hrSTALL
-	beq error
+retry	cmp #hrNAK
+	beq doretry
 	cmp #hrTIMEOUT
-	beq error
-	cmp #hrNAK
-	bne doretry
-	bit flags	; check HOST_FLAG_IGNORE_NAK in bit 7
-	bpl doretry
-	lda #0
-	jmp no_nak
+	beq doretry
+err1	jmp error
 doretry
 	dec rcnt
-	beq error
-	jmp againout
+	beq err1
+	
+	; process NAK according to Host out NAK bug
+	; ref https://github.com/ribbotson/USB-Host/blob/master/usb_host/Usb.cpp
+	wreg(rSNDBC, 0)
+	ldy #0
+	lda (dataptr),y
+	wrac(rSNDFIFO)
+	lda cnt
+	wrac(rSNDBC)
+	lda endpt	; BULK/OUT command is bmOUTNIN ORd with endpoint number
+	ora #tokOUT
+	wrac(rHXFR)
+wdone	rreg(rHIRQ)
+	and #bmHXFRDNIRQ
+	beq wdone
+	wrac(rHIRQ)	; clr interrupt
+	rreg(rHRSL)
+	and #bmHRESULT
+	jmp  retry
+
 error	ldy #ERR_DEVICE
 	sec
 	rts
@@ -673,22 +637,11 @@ docmd 	.(
 	pha
 	; clear xfer done irq, just in case
 	wreg(rHIRQ, bmHXFRDNIRQ)
-
-#ifdef DEBUG_HW
-	lda #"O"
-	jsr printc
-	pla
-	pha
-	jsr hexout
-#endif
 	pla
 	wrac(rHXFR)	; store in HXFR
 
 	; wait for completion
 l0	
-#ifdef DEBUG_HW
-	inc $8026
-#endif
 	rreg(rHIRQ)
 	and #bmHXFRDNIRQ
 	beq l0
@@ -697,23 +650,11 @@ l0
 	; check result
 	rreg(rHRSL)
 	and #bmHRESULT	; the four result bits
-	;cmp #hrBUSY
-	;beq l0
-	;cmp #0
-#ifdef DEBUG_HW
-	pha
-	jsr hexout
-	pla
-#endif
 	rts
 	.)
 
 ; send a setup packet
 sendsetup .(
-#if 0 //def DEBUG_HW
-lda #"S"
-jsr printc
-#endif
 	max3421e_enable()
 
 	lda #rSUDFIFO | 2	; OR#2 to set the write bit
@@ -803,7 +744,7 @@ queryusbdevice .(
 	and #bmJSTATUS + bmKSTATUS	; if both are zero
 	beq nodevice
 	lsr				; div by 2, so is $00/20/40/60, but never neg
-	sta polled			; store whether device has been detected
+	sta present			; store whether device has been detected
 
 	rreg(rMODE)
 	and #bmLOWSPEED
@@ -812,7 +753,7 @@ queryusbdevice .(
 	.byt $2c
 highspeedcheck
 	lda #bmKSTATUS>>1
-	and polled
+	and present
 	beq isfullspeed
 	lda #0				; low speed
 	.byt $2c
