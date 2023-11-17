@@ -305,7 +305,7 @@ end	rts
 get_in	.(
 	; set retry count
 	.(
-	lda #10
+	lda #3
 	sta rcnt
 	bit flags	; check HOST_FLAG_IGNORE_NAK in bit 7
 	bpl doretry
@@ -318,6 +318,7 @@ doretry sta ncnt
 	sta bcnt
 
 	; set toggle
+retoggle
 	ldy #HOST_CTRL_FLAGS
 	lda (ctrlptr),y
 	and #HOST_FLAG_DATA1
@@ -334,8 +335,8 @@ againin
 	jsr docmd
 	beq noerror	; hrSUCCESS is 0
 
-	cmp #hrSTALL
-	beq dotretry
+	cmp #hrTOGERR
+	beq togerr
 	cmp #hrTIMEOUT
 	beq dotretry
 	cmp #hrNAK
@@ -343,8 +344,6 @@ againin
 	; NAK retry
 	dec ncnt
 	bne againin
-	;lda #0
-	;beq no_nak
 	beq error	; beq error req'd for TP keyboard
 dotretry
 	dec rcnt
@@ -353,6 +352,19 @@ error
 	ldy #ERR_DEVICE
 	sec
 	rts
+togerr	
+	rreg(rHRSL)
+	ldy #HOST_CTRL_FLAGS
+	and #bmRCVTOGRD
+	bne togd0
+	lda (ctrlptr),y
+	ora #HOST_FLAG_DATA1
+	bne togd0x
+togd0	lda (ctrlptr),y
+	and #255-HOST_FLAG_DATA1
+togd0x	sta (ctrlptr),y
+	jmp retoggle
+
 noerror	
 	rreg(rHIRQ)
 	and #bmRCVDAVIRQ
@@ -362,7 +374,7 @@ noerror
 	; read number of bytes
 	rreg(rRCVBC)
 	sta cnt
-no_nak
+
 	; do we want that much data?
 	clc
 	adc bcnt
@@ -400,6 +412,8 @@ nodata
 	clc
 	adc bcnt
 	sta bcnt
+	cmp len
+	bcs done
 
 	; are we done yet?
 	; was last packet full sized?
