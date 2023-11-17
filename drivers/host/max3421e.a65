@@ -84,7 +84,8 @@ endpt	.byt 0
 flags	.byt 0
 maxpklen .byt 0		; maximum allowed size for packet
 cnt	.byt 0
-rcnt	.byt 0		; retry count
+rcnt	.byt 0		; retry count for timeout / stall
+ncnt	.byt 0		; retry count for NAK
 bcnt	.byt 0		; byt count up to len for packet transfer
 /*
 pream	.byt 0
@@ -304,21 +305,17 @@ end	rts
 get_in	.(
 	; set retry count
 	.(
+	lda #10
+	sta rcnt
 	bit flags	; check HOST_FLAG_IGNORE_NAK in bit 7
 	bpl doretry
 	lda #1
-	.byt $2c
-doretry	lda #10
-	sta rcnt
+doretry sta ncnt
 	.)
 
 	; set byte count
 	lda #0
 	sta bcnt
-
-	; clear rvdavirq (twice, for double buffering, just in case)
-	;wreg(rHIRQ, bmRCVDAVIRQ)
-	;wreg(rHIRQ, bmRCVDAVIRQ)
 
 	; set toggle
 	ldy #HOST_CTRL_FLAGS
@@ -338,13 +335,17 @@ againin
 	beq noerror	; hrSUCCESS is 0
 
 	cmp #hrTIMEOUT
-	beq doretry
+	beq dotretry
 	cmp #hrNAK
 	bne error
-doretry
+	; NAK retry
+	dec ncnt
+	bne againin
+	lda #0
+	beq no_nak
+dotretry
 	dec rcnt
-	beq error
-	jmp againin
+	bne againin
 error	
 	ldy #ERR_DEVICE
 	sec
@@ -358,7 +359,7 @@ noerror
 	; read number of bytes
 	rreg(rRCVBC)
 	sta cnt
-
+no_nak
 	; do we want that much data?
 	clc
 	adc bcnt
