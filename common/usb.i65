@@ -188,5 +188,49 @@
 #define USB_REQ_LOOPBACK_DATA_READ      $16
 #define USB_REQ_SET_INTERFACE_DS        $17
 
+/*
+ * Setup Data Constants
+ *
+ * source:
+ * - https://github.com/felis/USB_Host_Shield_2.0/blob/master/usb_ch9.h
+ */
+
+#define USB_SETUP_HOST_TO_DEVICE                0x00    // Device Request bmRequestType transfer direction - host to device transfer
+#define USB_SETUP_DEVICE_TO_HOST                0x80    // Device Request bmRequestType transfer direction - device to host transfer
+#define USB_SETUP_TYPE_STANDARD                 0x00    // Device Request bmRequestType type - standard
+#define USB_SETUP_TYPE_CLASS                    0x20    // Device Request bmRequestType type - class
+#define USB_SETUP_TYPE_VENDOR                   0x40    // Device Request bmRequestType type - vendor
+#define USB_SETUP_RECIPIENT_DEVICE              0x00    // Device Request bmRequestType recipient - device
+#define USB_SETUP_RECIPIENT_INTERFACE           0x01    // Device Request bmRequestType recipient - interface
+#define USB_SETUP_RECIPIENT_ENDPOINT            0x02    // Device Request bmRequestType recipient - endpoint
+#define USB_SETUP_RECIPIENT_OTHER               0x03    // Device Request bmRequestType recipient - other
+
+/* 
+ * HID BOOT PROTOCOL definitions
+ *
+ * source: 
+ * - https://github.com/felis/USB_Host_Shield_2.0/blob/master/usbhid.h
+ */
+
+
+/* HID requests */
+#define bmREQ_HID_OUT                           USB_SETUP_HOST_TO_DEVICE|USB_SETUP_TYPE_CLASS|USB_SETUP_RECIPIENT_INTERFACE
+#define bmREQ_HID_IN                            USB_SETUP_DEVICE_TO_HOST|USB_SETUP_TYPE_CLASS|USB_SETUP_RECIPIENT_INTERFACE
+#define bmREQ_HID_REPORT                        USB_SETUP_DEVICE_TO_HOST|USB_SETUP_TYPE_STANDARD|USB_SETUP_RECIPIENT_INTERFACE
+
+/* HID constants. Not part of chapter 9 */
+/* Class-Specific Requests */
+#define HID_REQUEST_GET_REPORT                  0x01
+#define HID_REQUEST_GET_IDLE                    0x02
+#define HID_REQUEST_GET_PROTOCOL                0x03
+#define HID_REQUEST_SET_REPORT                  0x09
+#define HID_REQUEST_SET_IDLE                    0x0A
+#define HID_REQUEST_SET_PROTOCOL                0x0B
+
+/* Protocol Selection */
+#define USB_HID_BOOT_PROTOCOL                   0x00
+#define HID_RPT_PROTOCOL                        0x01
+
+
 #endif
 

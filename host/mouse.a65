@@ -35,11 +35,63 @@ get_data .byt 0, 0, 0, HOST_FLAG_IGNORE_NAK
         .word 8  ; data stage transfer size (possibly multiple tx)
         .word kbdbuf
 
+; setup packet to set configuration
+setconf .byt 0, 0, 0, 0
+        .word 8
+        .word 0
+        .word buffer
+
 	.bss
 
+buffer  .dsb 8, 0
 kbdbuf	.dsb 8, 0 
 
 	.text
+
+set_idle .(
+	; SetIdle
+	lda #bmREQ_HID_OUT
+	sta buffer + USB_SETUP_TYPE
+	lda #HID_REQUEST_SET_IDLE
+	sta buffer + USB_SETUP_REQ
+	lda #0
+	sta buffer + USB_SETUP_VALUE
+	lda #0
+	sta buffer + USB_SETUP_VALUE+1
+	lda #1	;_iface_
+	sta buffer + USB_SETUP_INDEX
+	lda #0
+	sta buffer + USB_SETUP_INDEX+1
+	sta buffer + USB_SETUP_LEN
+	sta buffer + USB_SETUP_LEN+1
+
+	lda #<setconf
+	ldy #>setconf
+	jmp usb_control
+	.)
+
+set_protocol .(
+	; SetProtocol 
+	
+	lda #bmREQ_HID_OUT
+	sta buffer + USB_SETUP_TYPE
+	lda #HID_REQUEST_SET_PROTOCOL
+	sta buffer + USB_SETUP_REQ
+	lda #USB_HID_BOOT_PROTOCOL
+	sta buffer + USB_SETUP_VALUE
+	lda #0
+	sta buffer + USB_SETUP_VALUE+1
+	lda #1	;_iface_
+	sta buffer + USB_SETUP_INDEX
+	lda #0
+	sta buffer + USB_SETUP_INDEX+1
+	sta buffer + USB_SETUP_LEN
+	sta buffer + USB_SETUP_LEN+1
+
+	lda #<setconf
+	ldy #>setconf
+	jmp usb_control
+	.)
 
 ; registers a mouse interface
 ; ptr must hold pointer to interface descriptor
@@ -75,6 +127,12 @@ nextdesc
 	lda ptr+1
 	pha
 
+	; SetProtocol 
+;	jsr set_protocol
+
+	; SetIdle
+;	jsr set_idle
+
 	lda #<poll_data
 	ldy #>poll_data
 	jsr usb_register_poll_cb
@@ -107,9 +165,16 @@ std_poll
 	cmp #3		; buttons, x-displacement, y-displacement
 	bcc no_process
 
-	lda kbdbuf	; buttons
+	ldy #5
+l0	lda kbdbuf,y
+	sta $8000+80-6,y
+	dey
+	bpl l0 
+
+	lda kbdbuf+0	; buttons
 	ldx kbdbuf+1	; x-displ.
 	ldy kbdbuf+2	; y-displ.
+
 	; callback to main code when we got mouse data
 	jsr usb_mouse_rx_cb
 no_process

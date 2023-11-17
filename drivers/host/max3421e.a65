@@ -316,6 +316,10 @@ doretry	lda #10
 	lda #0
 	sta bcnt
 
+	; clear rvdavirq (twice, for double buffering, just in case)
+	;wreg(rHIRQ, bmRCVDAVIRQ)
+	;wreg(rHIRQ, bmRCVDAVIRQ)
+
 	; set toggle
 	ldy #HOST_CTRL_FLAGS
 	lda (ctrlptr),y
@@ -550,7 +554,7 @@ next	lda (dataptr),y
 nodata
 	; write number of bytes
 	wrac(rSNDBC)
-
+againout
 	; start command
 	lda endpt	; BULK/OUT command is bmOUTNIN ORd with endpoint number
 	ora #tokOUT
@@ -566,7 +570,7 @@ err1	jmp error
 doretry
 	dec rcnt
 	beq err1
-	
+#if 1	
 	; process NAK according to Host out NAK bug
 	; ref https://github.com/ribbotson/USB-Host/blob/master/usb_host/Usb.cpp
 	wreg(rSNDBC, 0)
@@ -585,6 +589,9 @@ wdone	rreg(rHIRQ)
 	rreg(rHRSL)
 	and #bmHRESULT
 	jmp  retry
+#else
+	jmp againout
+#endif
 
 error	ldy #ERR_DEVICE
 	sec

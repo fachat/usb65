@@ -71,7 +71,14 @@
  *	xr has slot number. FNADDR, ENDPOINT, dev speed is replaced with stored data from slot
  *	returns clc on ok, with AC number of bytes tx'd
  *	returns sec on error, with AC error code
- */
+ *
+ * usb_control 
+ *	Send a control msg, possibly receive some data (depends on control)
+ *	in: a/y contains pointer to HOST_CTRL structure,
+ *	FNADDR, ENDPOINT, SPEED, MAXPKLEN, BUFLEN, <buffer, >buffer.
+ *	x must have the slot number
+ *	FNADDR, ENDPOINT, SPEED, MAXPKLEN are set by usb_prepare_ctrl
+*/
 
  /*
  * usb host interface that is used here:

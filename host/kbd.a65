@@ -34,7 +34,7 @@ poll_data
         .word 0                 ; max packet length from EP descriptor
         .word kbd_poll_cb       ; poll callback function
 
-get_data .byt 0, 0, 0, 0;HOST_FLAG_IGNORE_NAK
+get_data .byt 0, 0, 0, HOST_FLAG_IGNORE_NAK
         .word 0         ; max endpoint packet size per tx (from EP descriptor)
         .word 8  	; data stage transfer size (possibly multiple tx)
         .word kbdbuf
@@ -118,6 +118,9 @@ nextdesc
 	lda #HOST_REGISTER_CTRL_USED	; do not close control slot
 
 exit	DEXIT("KBD_REGISTER_IFC")
+
+	lda #0
+	jsr send_mod
 	rts
 	.)
 
