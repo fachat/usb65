@@ -107,6 +107,9 @@ nextcfg
 	cmp #DESC_TYPE_INTERFACE
 	bne gotcfg
 
+	ldy #MSG_DETECT_HID
+	jsr print
+
 	; ptr contains pointer to interface desc
 	ldy #DESC_IFC_CLASS
 	lda (ptr),y
@@ -119,7 +122,11 @@ nextcfg
 	cmp #SUBCLASS_HID_KMT
 	bne next_ifc
 
-	iny			; DESC_IFC_PROTO
+	ldy #DESC_IFC_NUM	; interface number
+	lda (ptr),y
+	tax			; to XR for register callbacks
+
+	ldy #DESC_IFC_PROTO
 	lda (ptr),y
 	cmp #PROT_HID_KMT_KEYBOARD
 	beq got_kbd

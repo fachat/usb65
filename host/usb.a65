@@ -78,7 +78,12 @@
  *	FNADDR, ENDPOINT, SPEED, MAXPKLEN, BUFLEN, <buffer, >buffer.
  *	x must have the slot number
  *	FNADDR, ENDPOINT, SPEED, MAXPKLEN are set by usb_prepare_ctrl
-*/
+ * usb_register_poll_cb
+ *	register a poll callback
+ *	a/y hold the address of a HOST_POLL_* struct
+ *	curslot holds the current device from usb_init_device
+ *	return new slow number for the registered endpoint in AC
+,,*/
 
  /*
  * usb host interface that is used here:
@@ -137,6 +142,7 @@ MAX_PACKET	=$f0
 
 #include "hub.a65"
 #include "usbgen.a65"
+#include "hid.a65"
 #include "kbd.a65"
 #include "mouse.a65"
 #include "detect.a65"
@@ -661,6 +667,7 @@ gotdesc	ldx #<buffer
 ; converts the slot number in ac into fnaddr (back in ac)
 ; preserves xr, destroys yr
 ; must preserve carry!
+; called from hub
 &usb_get_fnaddr .(
 	tay
 	lda devnum,y
@@ -671,10 +678,10 @@ gotdesc	ldx #<buffer
 ; in: address of control struct given in a/y
 ; in: x holds slot number
 ; uses ptr/ptr+1
-&usb_prepare_ctrl .(
+usb_prepare_ctrl .(
 	sta ptr
 	sty ptr+1
-	stx curslot
+	;stx curslot
 
 	ldy #HOST_CTRL_FNADDR
 	lda devnum,x
@@ -706,7 +713,7 @@ gotdesc	ldx #<buffer
 	.)
 
 ; de-prepare the control data
-&usb_deprep_ctrl .(
+usb_deprep_ctrl .(
 	php
 	pha
 	ldx curslot
@@ -803,8 +810,9 @@ dosetaddr .(
 ; get some data. a/y contains pointer to HOST_CTRL structure,
 ; FNADDR, ENDPOINT, SPEED, MAXPKLEN, BUFLEN, <buffer, >buffer.
 ; x must have the slot number
-; FNADDR, ENDPOINT, SPEED, MAXPKLEN are set by usb_prepare_ctrl
+; FNADDR, ENDPOINT, SPEED, MAXPKLEN are set by usb_prepare_ctrl from slot
 &usb_get .(
+	stx curslot		; for de-prep
 	jsr usb_prepare_ctrl
 	jsr usb_host_get
 	jmp usb_deprep_ctrl
@@ -812,9 +820,10 @@ dosetaddr .(
 
 ; Send a control msg, possibly receive some data (depends on control)
 ; in: a/y contains pointer to HOST_CTRL structure,
-; FNADDR, ENDPOINT, SPEED, MAXPKLEN, BUFLEN, <buffer, >buffer.
+; FNADDR, ENDPOINT, SPEED, MAXPKLEN, BUFLEN, <buffer, >buffer, 8 byte setup packet
 ; x must have the slot number
 ; FNADDR, ENDPOINT, SPEED, MAXPKLEN are set by usb_prepare_ctrl
+; sends 8 byte SETUP packet at HOST_CTRL_SETUP
 &usb_control .(
 	jsr usb_prepare_ctrl
 	jmp usb_host_control

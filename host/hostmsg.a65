@@ -65,7 +65,7 @@ loop	lda (ZPRINTPTR),y
 pend	rts
 	.)
 
-	; print a message, index of message in XR
+	; print a message, index of message in YR
 	; then a hex byte value (in AC), then carriage return
 	; destroys AC, YR, keeps XR
 +printx	.(
@@ -96,9 +96,9 @@ m13	.asc "USB VERSION: ",0
 m14	.asc "PRODUCT: ",0
 m15	.asc "SERIAL NO: ",0
 m16	.asc "NUMBER OF CONFIGURATIONS: ",0
-m17	.asc "HID DETECTED",0
-m18	.asc "HID:KEYBOARD DETECTED",0
-m19	.asc "HID:MOUSE DETECTED",0
+m17	.asc "HID DETECTED",13,0
+m18	.asc "HID:KEYBOARD DETECTED",13,0
+m19	.asc "HID:MOUSE DETECTED",13,0
 m20	.asc "DEVICE NO: ",0
 m21	.asc 13, "PLEASE PRESS KEY",13, 0
 

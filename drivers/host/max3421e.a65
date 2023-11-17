@@ -334,6 +334,8 @@ againin
 	jsr docmd
 	beq noerror	; hrSUCCESS is 0
 
+	cmp #hrSTALL
+	beq dotretry
 	cmp #hrTIMEOUT
 	beq dotretry
 	cmp #hrNAK
@@ -341,8 +343,9 @@ againin
 	; NAK retry
 	dec ncnt
 	bne againin
-	lda #0
-	beq no_nak
+	;lda #0
+	;beq no_nak
+	beq error	; beq error req'd for TP keyboard
 dotretry
 	dec rcnt
 	bne againin

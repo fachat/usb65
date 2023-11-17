@@ -43,61 +43,25 @@ setconf .byt 0, 0, 0, 0
 
 	.bss
 
+iface	.byt 0
+slot	.byt 0
 buffer  .dsb 8, 0
 kbdbuf	.dsb 8, 0 
 
 	.text
 
-set_idle .(
-	; SetIdle
-	lda #bmREQ_HID_OUT
-	sta buffer + USB_SETUP_TYPE
-	lda #HID_REQUEST_SET_IDLE
-	sta buffer + USB_SETUP_REQ
-	lda #0
-	sta buffer + USB_SETUP_VALUE
-	lda #0
-	sta buffer + USB_SETUP_VALUE+1
-	lda #1	;_iface_
-	sta buffer + USB_SETUP_INDEX
-	lda #0
-	sta buffer + USB_SETUP_INDEX+1
-	sta buffer + USB_SETUP_LEN
-	sta buffer + USB_SETUP_LEN+1
-
-	lda #<setconf
-	ldy #>setconf
-	jmp usb_control
-	.)
-
-set_protocol .(
-	; SetProtocol 
-	
-	lda #bmREQ_HID_OUT
-	sta buffer + USB_SETUP_TYPE
-	lda #HID_REQUEST_SET_PROTOCOL
-	sta buffer + USB_SETUP_REQ
-	lda #USB_HID_BOOT_PROTOCOL
-	sta buffer + USB_SETUP_VALUE
-	lda #0
-	sta buffer + USB_SETUP_VALUE+1
-	lda #1	;_iface_
-	sta buffer + USB_SETUP_INDEX
-	lda #0
-	sta buffer + USB_SETUP_INDEX+1
-	sta buffer + USB_SETUP_LEN
-	sta buffer + USB_SETUP_LEN+1
-
-	lda #<setconf
-	ldy #>setconf
-	jmp usb_control
-	.)
-
 ; registers a mouse interface
 ; ptr must hold pointer to interface descriptor
 ; (endptr for usbgen_next_desc must hold end of descriptor set)
 &mouse_register_interface .(
+	sta poll_data + HOST_POLL_DATA
+	stx iface
+
 	DENTER("MOUSE_REGISTER_IFC")
+
+	ldy #MSG_HID_MOUSE
+	jsr print
+
 nextdesc
 	jsr usbgen_next_desc
 	bcs exit
@@ -127,15 +91,21 @@ nextdesc
 	lda ptr+1
 	pha
 
-	; SetProtocol 
-;	jsr set_protocol
-
-	; SetIdle
-;	jsr set_idle
-
 	lda #<poll_data
 	ldy #>poll_data
 	jsr usb_register_poll_cb
+	sta slot
+
+	; SetProtocol 
+	tax
+	ldy iface
+	jsr usb_hid_set_protocol
+
+	; SetIdle
+	ldx slot
+	ldy iface
+	lda #USB_HID_BOOT_PROTOCOL
+	jsr usb_hid_set_idle
 
 	pla
 	sta ptr+1

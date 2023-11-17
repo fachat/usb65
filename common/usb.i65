@@ -51,7 +51,7 @@
 #define	HOST_CTRL_FLAGS		3	/* SPEED+1, flags, e.g. to ignore NAK */
 #define	HOST_CTRL_MAXPKLEN	4	/* FLAGS+1, maximum packet length for endpoint (from EP desc), 2 byte */
 #define	HOST_CTRL_BUFLEN	6	/* MAXPKLEN+2, number of bytes to transfer; 2 byte  */
-#define	HOST_CTRL_BUFADDR	8	/* buffer addres to store data to */
+#define	HOST_CTRL_BUFADDR	8	/* buffer address to store data to */
 #define	HOST_CTRL_SETUP		10	/* 8 byte USB control packet */
 
 #define HOST_FLAG_IGNORE_NAK    $80     /* ignore NAK when reading data; must be bit 7 (bmi test) */
@@ -134,7 +134,7 @@
 #define DESC_IFC_LEN            0
 #define DESC_IFC_TYPE           1
 #define	DESC_IFC_NUM		2	/* number of this interface */
-#define	DESC_IFC_ALT		3	/* value used to select alteranate setting */
+#define	DESC_IFC_ALT		3	/* value used to select alternate setting */
 #define	DESC_IFC_NUM_EP		4	/* number of end points */
 #define	DESC_IFC_CLASS		5	/* class code */
 #define	DESC_IFC_SUBCLASS	6	/* subclass code */

@@ -34,7 +34,7 @@ poll_data
         .word 0                 ; max packet length from EP descriptor
         .word kbd_poll_cb       ; poll callback function
 
-get_data .byt 0, 0, 0, 0;HOST_FLAG_IGNORE_NAK
+get_data .byt 0, 0, 0, 0; HOST_FLAG_IGNORE_NAK
         .word 0         ; max endpoint packet size per tx (from EP descriptor)
         .word 8  	; data stage transfer size (possibly multiple tx)
         .word kbdbuf
@@ -51,6 +51,7 @@ send_led .byt 0, 0, 0, 0
 
 	.bss
 
+iface	.byt 0
 kbdbuf	.dsb 8, 0 
 
 ; send the modifiers as LED state
@@ -69,12 +70,18 @@ prevcnt	.byt 0		; how many times did we have this value?
 ; (endptr for usbgen_next_desc must hold end of descriptor set)
 &kbd_register_interface .(
 	sta poll_data + HOST_POLL_DATA
+	stx iface
+
 	DENTER("KBD_REGISTER_IFC")
+
+	ldy #MSG_HID_KEYBOARD
+	jsr print
+
 	lda #0
 	sta prevkey
 	sta prevmod
-	ldy #DESC_IFC_NUM
-	lda (ptr),y
+
+	lda iface
 	sta send_led + HOST_CTRL_SETUP + 4
 nextdesc
 	jsr usbgen_next_desc
@@ -108,6 +115,16 @@ nextdesc
 	lda #<poll_data
 	ldy #>poll_data
 	jsr usb_register_poll_cb
+	sta slot
+
+	ldx slot
+	ldy iface
+	jsr usb_hid_set_idle
+
+	ldx slot
+	ldy iface
+	lda #USB_HID_BOOT_PROTOCOL
+	jsr usb_hid_set_protocol
 
 	pla
 	sta ptr+1
@@ -119,8 +136,6 @@ nextdesc
 
 exit	DEXIT("KBD_REGISTER_IFC")
 
-	lda #0
-	jsr send_mod
 	rts
 	.)
 
@@ -158,7 +173,7 @@ std_poll
 	
 	cmp prevmod
 	beq nomod
-	;jsr send_mod
+	jsr send_mod
 nomod
 	tax
 	stx kbdbuf	; save modifiers
