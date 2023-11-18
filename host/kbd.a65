@@ -181,7 +181,6 @@ nomod
 	ldx #0
 keyloop	stx kbdbuf+1	; counter in unused packet field
 	lda kbdbuf+2,x
-sta $8028,x
 	;beq endkloop
 	ldx #0
 kl1	cmp lastkeys,x
@@ -248,7 +247,7 @@ send_mod .(
 ; translate the keycode from the keyboard to the 
 ; PETSCII code
 translate .(
-#if 1
+#if 0
 	.data
 scridx	.byt 0
 	.text
@@ -296,7 +295,7 @@ ctrl	iny 	; ctrl, y+=3
 no_mod	iny	; no mod, y+=1
 	lda (ptr),y
 	beq no_key
-#if 1
+#if 0
 	ldy scridx
 	sta $8000,y
 	inc scridx

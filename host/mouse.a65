@@ -135,15 +135,17 @@ std_poll
 	cmp #3		; buttons, x-displacement, y-displacement
 	bcc no_process
 
+#if 0
 	ldy #5
 l0	lda kbdbuf,y
 	sta $8000+80-6,y
 	dey
 	bpl l0 
-
+#endif
 	lda kbdbuf+0	; buttons
 	ldx kbdbuf+1	; x-displ.
 	ldy kbdbuf+2	; y-displ.
+			; some mice have kbdbuf+3 as scrollwheel
 
 	; callback to main code when we got mouse data
 	jsr usb_mouse_rx_cb

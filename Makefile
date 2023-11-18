@@ -1,6 +1,6 @@
 
 all:
-	make -C platforms
+	#make -C platforms
 
 clean:
 	make -C platforms clean

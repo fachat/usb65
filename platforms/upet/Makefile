@@ -52,5 +52,5 @@ ${LOADER}: petusbloader.o65 ${TSR}
 	cat ${TSR} >> $@
 
 clean:
-	rm -f *.o65
+	rm -f *.o65 *.lst
 
