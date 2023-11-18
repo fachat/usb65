@@ -335,8 +335,12 @@ againin
 	jsr docmd
 	beq noerror	; hrSUCCESS is 0
 
-	cmp #hrTOGERR
-	beq togerr
+	cmp #hrSTALL
+	beq dotretry
+	; note: according to https://github.com/felis/USB_Host_Shield_2.0/blob/master/Usb.cpp
+	; this should handle the Toggle error. But it breaks the Lenovo mouse
+	;cmp #hrTOGERR
+	;beq togerr
 	cmp #hrTIMEOUT
 	beq dotretry
 	cmp #hrNAK
