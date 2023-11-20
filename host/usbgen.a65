@@ -21,7 +21,7 @@
  * generic USB functionality
  */
 
-#define	DEBUG
+;#define	DEBUG
 
 	.data
 

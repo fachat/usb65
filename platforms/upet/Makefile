@@ -30,10 +30,10 @@ ${COMMON_O65}:
 	make -C ../../common
 
 %.o65: %.a65
-	xa -R -U -bt 1023 -I../../common -P $*.lst -I../../host -DSPIADDR=2 -o $@ $<
+	xa -R -U -XMASM -bt 1023 -I../../common -P $*.lst -I../../host -DSPIADDR=2 -o $@ $<
 
 petusbdrv.o65: petusbdrv.a65
-	xa -R -U -bt 24576 -I../../common -P $*.lst -I../../host -DSPIADDR=2 -o $@ $<
+	xa -R -U -XMASM -bt 24576 -I../../common -P $*.lst -I../../host -DSPIADDR=2 -o $@ $<
 
 ${MAIN}.o65: ${MAIN_O65} ${DRIVER_O65} ${HOST_O65}
 	ldo65 -G -v -v -o $@ $^
@@ -42,7 +42,7 @@ ${MAIN}: ${MAIN}.o65
 	reloc65 -X -bt 1023 -bz 66 -o $@ $<
 
 ${TSR}.o65: ${TSR_O65} ${DRIVER_O65} ${HOST_O65} ${COMMON_O65}
-	ldo65 -G -v -v -bt 24576 -o $@ $^
+	ldo65 -G -v -v -bz 192 -bt 24576 -o $@ $^
 
 ${TSR}: ${TSR}.o65
 	reloc65 -X -bt 24576 -bz 192 -o $@ $<

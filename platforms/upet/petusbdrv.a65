@@ -43,9 +43,9 @@ ZPRINTPTR	=$b1
 ; device driver pointer
 ZUDEVPTR1	=$b7; 	$ce	; $b7 (conflict with editor ROM project - escape codes)
 ; general pointer within USB code
-ptr		=$b9
+ptr		=$bb
 ; debug code pointer (to save inline string address)
-dbg_ptr		=$bb
+dbg_ptr		=$bd
 
 	.(
 	.text
@@ -83,6 +83,7 @@ lock	.byt 0
 	rts
 
 &startint 
+
 	jsr scr_flush
 
 	; patch the poll routine into the interrupt routine
@@ -130,7 +131,8 @@ newirq
 	; code in just this place, and then forward the RTI address on the
 	; stack such that the check is ignored.
 	tsx
-	lda $0106,x
+	;lda $0106,x
+	;bpl nopoll
 	cmp #$f9
 	bne nohack	;no hack needed
 	lda $0105,x
@@ -146,6 +148,12 @@ nohack
 	;-------------------------------
 	; debug output
 #ifdef DEBUG
+lda $0105,x
+sta $8000
+lda $0106,x
+sta $8001
+lda lock
+sta $8002
 	inc DBGBASE+0
 	lda $96		; kernel status
 	sta DBGBASE+1
@@ -160,16 +168,24 @@ nohack
 	and #$c1	; NRFDin, NDACin, DAVin
 	cmp #$c1	; active? then do not poll, as we might interfere with IEEE488 timing
 	bne nopoll
+
+	lda $0106,x	; protect all interrupts in $exxx-$fxxx
+	and #$e
+	cmp #$e
+	beq nopoll
 	
 	;-------------------------------
-	; poll the USB bus
-
+	; check soft lock
 	; no race condition, we can safely assume to not be interrupted (on single-cpu)
+
 	lda lock
 	bpl poll
+
 	; back into original irq routine
-nopoll	;jmp (irqv)
-	jmp newirq2
+nopoll	jmp newirq2
+
+	;-------------------------------
+	; poll the USB bus
 poll
 #ifdef DEBUG
 	tsx
@@ -180,19 +196,27 @@ poll
 #endif
 
 	dec lock	; lock so we don't get into poll again for now; results in $ff
-	cli		; allow interrupts again (we need them in the driver)
+	php
+	cli		; allow interrupts again (we need them in the driver - if VDRIVE/keypress are not skipped)
 			; this actually directly goes back into the IRQ routine, as we haven't
 			; cleared the IRQ yet. Only now the lock above protects the routine,
 			; and the normal irq is executed
-
+			; note: if cli is not executed, exit from poll must go to newirq2
 	jsr usb_polldev
-	bcs error
-
+	bcc retirq
+error
+	ldy #ERR_DEVICE
+	jsr printx
 retirq	
 	; flush last message to screen
 	jsr scr_flush
 
-	sei
+	plp
+
+	; free lock
+	inc lock
+
+	;jmp newirq2
 
 	; return into original program (as if from interrupt)
 	pla
@@ -200,14 +224,7 @@ retirq
 	pla
 	tax
 	pla
-	; free lock
-	inc lock	; $ff -> $00
 	rti
-
-error
-	ldy #ERR_DEVICE
-	jsr printx
-	jmp retirq
 	.)
 
 +waitkey .(
@@ -233,6 +250,7 @@ VCOUNT=$99
 ; pause a given number of vertical screen retraces (1/50th seconds)
 ; in AC has number of frames (retraces)
 +pause   .(
+;	jmp waitloop
 	tax
 	inx           ; full retraces, so one more border between traces
 p0	lda VCOUNT
@@ -425,10 +443,13 @@ show	.(
 	.)
 
 waitkeypress .(
-	lda $9e
-	beq waitkeypress
+;	jmp waitloop
+	cli
+l	lda $9e
+	beq l
 	sei
-	jmp $e0a7
+	jsr $e003	; does a CLI at the end
+	rts
 	.)
 
 swap	.(
@@ -445,54 +466,53 @@ sl	ldx screenbuf-1,y
 
 screenbuf .dsb SCRLEN
 
+waitloop
+	.(
+	ldx #0
+	ldy #0
+l	dex
+	bne l
+	dey
+	bne l
+	rts
+	.)
+
 	.)
 
 newirq2  .(
-;        lda irqmode
-;        bne noloop
-;        jsr DLOOP
-noloop  ;jmp (irqsave)
-
         ; the PET sets the MTR line on the tape, no matter what,
         ; esp. with the SENSE line.
         ; So we need to emulate the original IRQ routine up to the 
         ; point behind that MTR code
-
         jsr $f768       ; update jiffy
         ; cursor handling
-        lda $a7
-        bne e474        ; $d0 $18
-        dec $a8
-        bne e474        ; $d0 $14
+        lda $a7		; cursor blink enable
+        bne e474        ; no, then end
+        dec $a8		; blink counter
+        bne e474        ; not done yet, then end
+
         lda #$14
-        sta $a8
-        ldy $c6
-        lsr $aa
-        lda ($c4),y
-        bcs e476        ; $b0 $04
-        inc $aa
-        sta $a9
+        sta $a8		; reset cursor time counter
+
+        ldy $c6		; cursor current column
+        lsr $aa		; b0 last cursor state flag
+        lda ($c4),y	; load screen char
+        bcs e476        ; cursor toggle bit was set, skip
+        inc $aa		; cursor toggle bit was not set, set it
+        sta $a9		; store char under cursor
 e476
-        eor #$80
+        eor #$80	; toggle cursor
         sta ($c4),y
 e474
-        ; ???
-        ldx #$ff
-        stx $a6
-        inx
-        stx $98
-        ldx #$50
-;e47d
         lda $e810
         and #$f0
-        sta $e810
-;e485
-        ; MTR handling removed
-;e4b5
-        ; keyboard read
-        jmp $e4b5
+        sta $e810	; clear keyboard row selector output
 
+        ; keyboard read 
+	jsr $e027
 
+	; return from interrupt
+        jmp $e600
         .)
 #endif
 
