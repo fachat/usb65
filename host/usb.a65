@@ -379,6 +379,7 @@ p0	stx curslot
 	DMSG("RET DEV")
 #endif
 	bcc next
+
 	; error handling
 	tay		; error
 	pla		; saved state = curslot

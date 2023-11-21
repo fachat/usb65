@@ -42,17 +42,19 @@ get_data .byt 0, 0, 0, HOST_FLAG_IGNORE_NAK
 send_led .byt 0, 0, 0, 0
         .word 0         ; max endpoint packet size per tx (from EP descriptor)
         .word 1  	; data stage transfer size (possibly multiple tx)
-        .word kbdbuf
+        .word ledbuf
 	.byt $21
 	.byt $09	; SET_REPORT
 	.byt 0, 2	; report type (2=output) and id (none=0)
 	.word 0		; interface
 	.word 1		; report length
+ledbuf	.byt 0
 
 	.bss
 
 iface	.byt 0
 kbdbuf	.dsb 8, 0 
+lastkeys .dsb 6,0
 
 ; send the modifiers as LED state
 prevmod	.byt 0		; previous state of the modifiers
@@ -71,6 +73,8 @@ prevcnt	.byt 0		; how many times did we have this value?
 &kbd_register_interface .(
 	sta poll_data + HOST_POLL_DATA
 	stx iface
+
+	jsr clrkloop
 
 	DENTER("KBD_REGISTER_IFC")
 
@@ -175,27 +179,26 @@ std_poll
 	beq nomod
 	jsr send_mod
 nomod
-	tax
-	stx kbdbuf	; save modifiers
-
 	ldx #0
 keyloop	stx kbdbuf+1	; counter in unused packet field
 	lda kbdbuf+2,x
-	;beq endkloop
+	beq endkloop
 	ldx #0
 kl1	cmp lastkeys,x
 	beq nextkey	; key is in old list - so skip
 	inx
 	cpx #6
-	bne kl1
+	bcc kl1
+
 	; key is not in old list - so newly pressed
-	ldx kbdbuf	; modifier
 	jsr sendkey	; send it to callback
+
 	; check next entry in key list
 nextkey	ldx kbdbuf+1
 	inx
 	cpx #6
-	bne keyloop
+	bcc keyloop
+
 	; all key entries checked - copy current to lastkeys
 endkloop
 	ldx #5
@@ -203,6 +206,7 @@ kl2	lda kbdbuf+2,x
 	sta lastkeys,x
 	dex
 	bpl kl2
+
 no_process
 	clc
 	rts
@@ -217,22 +221,24 @@ kl3	sta lastkeys,x
 	rts
 	
 sendkey	.(
+	ldx prevmod	; modifier (with combined l/r bits)
 	jsr translate
 	bcs no_data
 	; callback to main code when we got a key	
+	ldx kbdbuf	; modifier (with different left/right bits)
 	jsr usb_kbd_rx_key_cb
 no_data	rts
 	.)
-	.data
-lastkeys .byt 0,0,0,0,0,0
-	.text
+
 	.)
 
 ; send the modifiers as report to the keyboard, to toggle the LEDs,
 ; just for demonstration, as we don't currently handle NUMLOCK or CAPSLOCK yet
 send_mod .(
 	sta prevmod
-	sta kbdbuf	; report data
+	sta ledbuf	; report data
+	lda iface
+	sta send_led+USB_SETUP_INDEX
 	ldx kcslot
 #ifdef DEBUG_KBD
 	DMSG("SEND_MOD")

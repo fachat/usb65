@@ -58,6 +58,8 @@ SCRBASE		=$8000
 #endif
 
 IRQV	=$0090
+BRKV	=$0092
+BRKJMP	=$E44F
 
 	jmp usb_init		; +0
 	jmp print		; +3
@@ -73,6 +75,7 @@ IRQV	=$0090
 	.(
 	.data
 irqv	.word 0
+brkv	.word 0
 lock	.byt 0
 	.text
 
@@ -100,10 +103,28 @@ lock	.byt 0
 	lda IRQV+1
 	sta irqv+1
 
+	lda BRKV
+	sta brkv
+	lda BRKV+1
+	sta brkv+1
+
+	; several places in the kernal check via $f92b if the interrupt vector is 
+	; on page $e4xx - otherwise they hang. This is presumably to wait for the
+	; end of tape operations.
+	;
+	; We hack this by setting the interrupt vector to the indirect jump for the
+	; BRK vector - and then redirecting the BRK vector to our code....
+	;
 	lda #<newirq
-	sta IRQV
+	sta BRKV
 	lda #>newirq
+	sta BRKV+1
+
+	lda #<BRKJMP
+	sta IRQV
+	lda #>BRKJMP+1
 	sta IRQV+1
+
 	plp		; implicit cli
 	rts
 
@@ -114,6 +135,10 @@ lock	.byt 0
 	sta IRQV
 	lda irqv+1
 	sta IRQV+1
+	lda brkv
+	sta BRKV
+	lda brkv+1
+	sta BRKV+1
 	plp
 	rts
 
@@ -125,26 +150,38 @@ newirq
 	; After IEC load, the kernal calls F92B, assumingly to check
 	; the RUN/STOP key a last time. But starting from F92E it checks
 	; whether the interrupt vector is set to page $E4xx - and if not,
-	; just loops! I did not find another way around this than the following
+	; just loops! One way around this is the following
 	; BAD HACK:
 	; in the interrupt routine, we check whether we have interrupted the
 	; code in just this place, and then forward the RTI address on the
 	; stack such that the check is ignored.
+	; However, it seems there are conditions where this still did not 
+	; trigger. My assumption is that the number of cycles for a screen
+	; (interrupt) is similar to when checking the STOP key in the loop
+	; So, instead, we re-purpose the BRK vector jump, which is at 
+	; $E44F and use the BRK code instead
+	; 
 	tsx
+
+	lda $0104,x	; SR
+	and #$10	; BRK flag
+	beq nobrk
+	jmp (brkv)
+nobrk
 	;lda $0106,x
 	;bpl nopoll
-	cmp #$f9
-	bne nohack	;no hack needed
-	lda $0105,x
-	cmp #$2b
-	beq hack
-	cmp #$2e
-	beq hack
-	cmp #$30
-	bne nohack
-hack	lda #$34
-	sta $0105,x
-nohack
+;	cmp #$f9
+;	bne nohack	;no hack needed
+;	lda $0105,x
+;	cmp #$2b
+;	beq hack
+;	cmp #$2e
+;	beq hack
+;	cmp #$30
+;	bne nohack
+;hack	lda #$34
+;	sta $0105,x
+;nohack
 	;-------------------------------
 	; debug output
 #ifdef DEBUG
@@ -169,9 +206,9 @@ sta $8002
 	cmp #$c1	; active? then do not poll, as we might interfere with IEEE488 timing
 	bne nopoll
 
-	lda $0106,x	; protect all interrupts in $exxx-$fxxx
-	and #$e
-	cmp #$e
+	lda $0106,x	; protect all interrupts in $f0xx-$f1xx
+	and #$f0
+	cmp #$f0
 	beq nopoll
 	
 	;-------------------------------
@@ -197,13 +234,14 @@ poll
 
 	dec lock	; lock so we don't get into poll again for now; results in $ff
 	php
-	cli		; allow interrupts again (we need them in the driver - if VDRIVE/keypress are not skipped)
+	;cli		; allow interrupts again (we need them in the driver - if VDRIVE/keypress are not skipped)
 			; this actually directly goes back into the IRQ routine, as we haven't
 			; cleared the IRQ yet. Only now the lock above protects the routine,
 			; and the normal irq is executed
 			; note: if cli is not executed, exit from poll must go to newirq2
 	jsr usb_polldev
 	bcc retirq
+
 error
 	ldy #ERR_DEVICE
 	jsr printx
@@ -216,15 +254,15 @@ retirq
 	; free lock
 	inc lock
 
-	;jmp newirq2
+	jmp newirq2
 
 	; return into original program (as if from interrupt)
-	pla
-	tay
-	pla
-	tax
-	pla
-	rti
+;	pla
+;	tay
+;	pla
+;	tax
+;	pla
+;	rti
 	.)
 
 +waitkey .(
@@ -251,6 +289,8 @@ VCOUNT=$99
 ; in AC has number of frames (retraces)
 +pause   .(
 ;	jmp waitloop
+	php
+	cli
 	tax
 	inx           ; full retraces, so one more border between traces
 p0	lda VCOUNT
@@ -258,6 +298,7 @@ p1	cmp VCOUNT
 	beq p1
 	dex
 	bne p0
+	plp
 	rts
 	.)
 
@@ -444,11 +485,13 @@ show	.(
 
 waitkeypress .(
 ;	jmp waitloop
+	php
 	cli
 l	lda $9e
 	beq l
 	sei
 	jsr $e003	; does a CLI at the end
+	plp
 	rts
 	.)
 
