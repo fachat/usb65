@@ -29,8 +29,6 @@
 #undef	DEBUG_POLL
 #undef	DEBUG_HW
 
-MAX3421E_EnMask=SPIADDR
-
 #define	XMAX	#9	; at $e3 for 80 cols, or $03eb for 40 cols - so use constant
 
 #include "hostmsg.i65"
@@ -61,7 +59,7 @@ IRQV	=$0090
 BRKV	=$0092
 BRKJMP	=$E44F
 
-	jmp usb_init		; +0
+	jmp init		; +0
 	jmp print		; +3
 	jmp scr_flush		; +6
 	jmp prversion		; +9
@@ -79,6 +77,8 @@ brkv	.word 0
 lock	.byt 0
 	.text
 
+&init	jsr setup_io
+	jmp usb_init
 
 &start2	
 	lda #0

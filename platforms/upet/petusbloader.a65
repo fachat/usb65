@@ -101,7 +101,7 @@ loop	lda (ptr1),y
 
 #ifdef PET
 	lda #3
-	sta $e809
+	;sta $e809
 #endif
 	jsr newpos+18		; startint - to keep MOTOR save
 	

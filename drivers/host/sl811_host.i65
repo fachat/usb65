@@ -47,6 +47,8 @@
 #define	SL811H_SOF_LOW	14	/* SOF value lowest 8 bit (write only) */
 #define	SL811H_CTRL2	15	/* control register 2 */
 
+#define	SL811H_DATABUF	16	/* start of data buffer */
+
 #define	STREGH(reg)	ldx #reg:jsr storeregh
 #define	LDREGH(reg)	ldx #reg:jsr loadregh
 #define	STREGXH()	jsr storeregh

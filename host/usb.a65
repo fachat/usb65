@@ -17,6 +17,9 @@
     along with the 6502 USB Host Driver. If not, see <http://www.gnu.org/licenses/>.
 */
 
+;#define DEBUG
+;#define DEBUG_POLL
+
 /*
  * device-independent USB functionality
  * i.e. independent from the USB host hardware
@@ -128,7 +131,6 @@ MAX_PACKET	=$f0
 
 /******************************************************/
 
-;#define	DEBUG
 
 #include "debug.a65"
 #include "usb.i65"
@@ -800,7 +802,7 @@ ok 	clc
 ; speed is set here, endpoint is zero anyway and packet length
 ; is irrelevant as we don't have a data stage
 dosetaddr .(
-	sta setaddr + HOST_CTRL_SETUP + 2
+	sta setaddr + HOST_CTRL_SETUP + USB_SETUP_VALUE
 	lda devspeed,y
 	sta setaddr + HOST_CTRL_SPEED
 	lda #<setaddr

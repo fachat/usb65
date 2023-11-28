@@ -24,7 +24,6 @@
 /* globals */
 
 printc=$ffd2
-MAX3421E_EnMask=SPIADDR
 
 
 	.(
@@ -158,6 +157,8 @@ e474
         .)
 
 start	.(
+	jsr setup_io
+
 	jsr iniirq
 
 	lda #14

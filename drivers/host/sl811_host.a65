@@ -17,6 +17,8 @@
     along with the 6502 USB Host Driver. If not, see <http://www.gnu.org/licenses/>.
 */
 
+//#define	DEBUG_HW
+
 /*
  * requires SL811_HOST to be set to the I/O address for the
  * host SL811 device
@@ -29,16 +31,16 @@
  /*
  * external interface:
  * 
- * sl811h_init
+ * usb_host_init
  *	checks presence of hardware (SL811); 
  *	return clc when ok, sec when not found 
  *	when found, return version in AC, as BCD
  *	fastcall
- * sl811h_polldev
+ * usb_host_polldev
  *	checks if a device is present.
  *	return clc when device found, sec when not
  *	fastcall
- * sl811h_devinit
+ * usb_host_devinit
  *	init the SL811 and the USB bus
  *	return clc when device found, sec when not
  *	when device is found, return speed in AC
@@ -47,16 +49,22 @@
  *	when device is not found, return error condition in AC
  *	0=no device 
  *	routine is slow, calls pause
- * sl811h_reset
+ * usb_host_reset
  *	reset the bus and configure for correct speed
  *	input: AC=speed
  *	0=low speed
  *	send a SETUP packet, and receive results when
  *	applicable
+
+ * usb_host_control
  *	in: A/Y contain ptr to request buffer (HOST_CTRL_*)
  *	return clc on success, sec on error
  *	on success, AC has number of bytes transferred
  * 	on error, AC has error condition
+
+ * usb_host_get
+ *	do an IN transfer. a/y are the address of the 
+ *	control struct
  */
 
 #include "usb.i65"
@@ -163,7 +171,8 @@ fullspeed
 init_low 
         ; init chip
 	; swap for low speed
-        lda #CTLREG2_INIT | CTLREG2_DSWAP
+	; + SOF counter hi
+        lda #CTLREG2_INIT | CTLREG2_DSWAP | $2e
         STH_CTRL2
 
 	lda #$e0
@@ -179,7 +188,8 @@ init_low
 init_full 
         ; init chip
 	; swap only for low speed
-        lda #CTLREG2_INIT
+	; + SOF counter hi
+        lda #CTLREG2_INIT | $2e
         STH_CTRL2
 
 	lda #$e0
@@ -241,6 +251,9 @@ set_params .(
 	iny			; HOST_CTRL_FLAGS
 	lda (ctrlptr),y
 	sta flags
+#ifdef DEBUG_HW
+	jsr hexout
+#endif
 
 	iny			; HOST_CTRL_MAXPKLEN low
 	lda (ctrlptr),y
@@ -298,7 +311,7 @@ end	rts
 	lda #"!"
 	jsr printc
 #endif
-	ldx #$10
+	ldx #SL811H_DATABUF
 	ldy #HOST_CTRL_SETUP
 c1	
 	stx SL811H_REG		; ERRATA says not to use the autoincrement feature... :-(
@@ -537,9 +550,9 @@ data_control .(
 	sta cnt		; 0=receive, $80=send
 
 	.(
-	ldy #10		; retry count
+	ldy #20		; retry count
 
-sb2	lda #$10
+sb2	lda #SL811H_DATABUF
 	STH_BUFADDR
 
 	lda #8
@@ -552,7 +565,7 @@ sb2	lda #$10
 	lda #HOSTCTL_ARM | HOSTCTL_OUT | HOSTCTL_ENABLE
 	ora pream
 	jsr hostcmd
-	bcs cmdl
+	bcs cmdl	; jmp on no int response
 	tax
 	and #PKSTAT_ERROR | PKSTAT_TIMEOUT	; if no packet timeout (4) or error (2)
 	beq sendrecv	; then go to data stage

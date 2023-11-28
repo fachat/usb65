@@ -1,26 +1,30 @@
 
 MAIN=upetusb
-TSR=upetusbdrv
-LOADER=upetusbloader
-
-DRIVER_O65=../../drivers/host/max3421e.o65 ../../drivers/spi/upetspi.o65
-HOST_O65=../../host/usb.o65 ../../host/hostmsg.o65
-COMMON_O65=../../common/debug.o65 
 
 MAIN_O65=petusb4.o65
 TSR_O65=petusbdrv.o65
 
+MXTSR=mxdrvtsr
+MXLOADER=mxdrv
+MXDRIVER_O65=../../drivers/host/max3421e.o65 ../../drivers/spi/upetspi.o65 
+MXBIND_O65=bind_upet_max3421e.o65
+MXOBJ_O65=${MXDRIVER_O65} ${MXBIND_O65}
 
-FILES=$(COMMON_FILES) $(DRIVER_FILES)
+SLTSR=sldrvtsr
+SLLOADER=sldrv
+SLDRIVER_O65=../../drivers/host/sl811_host.o65 
+SLBIND_O65=bind_upet_csa_sl811hs.o65 
+SLOBJ_O65=${SLDRIVER_O65} ${SLBIND_O65}
 
-##LINK=reloc65 -bt 1023 -bz 17 -X -v
-#XAX=xa -R -U -c -bt 24576 -bz 192 -XC -XMASM -I../../common -I../../drivers
-#LINK=reloc65 -bt 1023 -bz 66 -X 
+HOST_O65=../../host/usb.o65 ../../host/hostmsg.o65
+COMMON_O65=../../common/debug.o65 
 
+all: ${MAIN} ${MXLOADER} ${SLLOADER}
 
-all: ${MAIN} ${LOADER}
+###############################################
+# base
 
-${DRIVER_O65}:
+${MXDRIVER_O65} ${SLDRIVER_O65}:
 	make -C ../../drivers
 
 ${HOST_O65}:
@@ -30,27 +34,49 @@ ${COMMON_O65}:
 	make -C ../../common
 
 %.o65: %.a65
-	xa -R -U -XMASM -bt 1023 -I../../common -P $*.lst -I../../host -DSPIADDR=2 -o $@ $<
+	xa -R -U -XMASM -bt 1023 -I../../common -P $*.lst -I../../host -o $@ $<
 
+# for listing with correct address
 petusbdrv.o65: petusbdrv.a65
-	xa -R -U -XMASM -bt 24576 -I../../common -P $*.lst -I../../host -DSPIADDR=2 -o $@ $<
+	xa -R -U -XMASM -bt 24576 -I../../common -P $(patsubst %.o65,%.lst,$@) -I../../host -DSPIADDR=2 -o $@ $<
 
-${MAIN}.o65: ${MAIN_O65} ${DRIVER_O65} ${HOST_O65}
+###############################################
+
+${MAIN}.o65: ${MAIN_O65} ${HOST_O65} ${COMMON_O65} ${MXOBJ_O65}
 	ldo65 -G -v -v -o $@ $^
 
 ${MAIN}: ${MAIN}.o65
 	reloc65 -X -bt 1023 -bz 66 -o $@ $<
 
-${TSR}.o65: ${TSR_O65} ${DRIVER_O65} ${HOST_O65} ${COMMON_O65}
-	ldo65 -G -v -v -bz 192 -bt 24576 -o $@ $^
+###############################################
+# MAX3421 
 
-${TSR}: ${TSR}.o65
-	reloc65 -X -bt 24576 -bz 192 -o $@ $<
+${MXTSR}: ${TSR_O65} ${HOST_O65} ${COMMON_O65} ${MXOBJ_O65}
+	ldo65 -G -v -v -o $@.o65 $^
+	reloc65 -X -bt 24576 -bz 192 -o $@ $@.o65
 
-${LOADER}: petusbloader.o65 ${TSR}
+${MXLOADER}: petusbloader.o65 ${MXTSR}
 	reloc65 -X -bt 1023 -o $@ $<
-	cat ${TSR} >> $@
+	cat ${MXTSR} >> $@
+
+###############################################
+# SL811HS
+
+${SLTSR}: ${TSR_O65} ${HOST_O65} ${COMMON_O65} ${SLOBJ_O65}
+	ldo65 -G -v -v -o $@.o65 $^
+	reloc65 -X -bt 24576 -bz 192 -o $@ $@.o65
+
+${SLLOADER}: petusbloader.o65 ${SLTSR}
+	reloc65 -X -bt 1023 -o $@ $<
+	cat ${SLTSR} >> $@
+
+
+###############################################
 
 clean:
-	rm -f *.o65 *.lst
+	rm -f *.o65 *.lst 
+	rm -f ${MAIN}
+	rm -f ${MXTSR} ${MXLOADER}
+	rm -f ${SLTSR} ${SLLOADER}
+
 
