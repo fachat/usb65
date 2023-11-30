@@ -334,13 +334,12 @@ againin
 	ora endpt	; BULK/IN command is $0x ORd with endpoint number
 	jsr docmd
 	beq noerror	; hrSUCCESS is 0
-
 	cmp #hrSTALL
 	beq dotretry
 	; note: according to https://github.com/felis/USB_Host_Shield_2.0/blob/master/Usb.cpp
-	; this should handle the Toggle error. But it breaks the Lenovo mouse
-	;cmp #hrTOGERR
-	;beq togerr
+	; this should handle the Toggle error. 
+	cmp #hrTOGERR
+	beq togerr
 	cmp #hrTIMEOUT
 	beq dotretry
 	cmp #hrNAK
@@ -352,7 +351,7 @@ againin
 dotretry
 	dec rcnt
 	bne againin
-error	
+error
 	ldy #ERR_DEVICE
 	sec
 	rts
@@ -360,7 +359,7 @@ togerr
 	rreg(rHRSL)
 	ldy #HOST_CTRL_FLAGS
 	and #bmRCVTOGRD
-	bne togd0
+	beq togd0
 	lda (ctrlptr),y
 	ora #HOST_FLAG_DATA1
 	bne togd0x
@@ -373,22 +372,21 @@ noerror
 	rreg(rHIRQ)
 	and #bmRCVDAVIRQ
 	beq error
-
 	; transfer data
 	; read number of bytes
 	rreg(rRCVBC)
 	sta cnt
-
 	; do we want that much data?
 	clc
 	adc bcnt
 	cmp len
 	bcc lenok
 	lda len
-lenok 	sec
+ 	sec
 	sbc bcnt
 	sta cnt	
 
+lenok	lda cnt
 	; data available?
 	cmp #0
 	beq nodata

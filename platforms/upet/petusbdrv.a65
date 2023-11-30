@@ -224,6 +224,8 @@ nopoll	jmp newirq2
 	;-------------------------------
 	; poll the USB bus
 poll
+	;inc 59520+34	; border color
+
 #ifdef DEBUG
 	tsx
 	lda $0105,x
@@ -249,7 +251,9 @@ retirq
 	; flush last message to screen
 	jsr scr_flush
 
-	plp
+	;dec 59520+34	; border color
+
+	plp		; implicit sei if cli above
 
 	; free lock
 	inc lock
