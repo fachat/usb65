@@ -84,9 +84,5 @@ Known bugs
 Device quirks
 -------------
 
-- Lenovo keyboard 17EF,6047 (on MAX3421): 
-	when you use the mouse first after plugging in, keyboard does not work anymore
-- Lenovo Mouse 04b3,3108 (on MAX3421): 
-	mouse buttons register only when the mouse is moved at the same time
-
+- (all resolved at this time with the limited amount of devices tested)
 
