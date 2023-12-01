@@ -43,8 +43,12 @@ eol	.word 0
 	.)
 	.(
 
+	.data
 irqvec  =$90
+
+	.align 2
 irqsave .word 0
+	.text
 
 	.zero
 ; print routine pointer

@@ -196,6 +196,7 @@ getconf	.byt 0, 0, 0, 0
 
 state 	.byt 0		; master state (80=hw found, +40=root device found)
 
+	.align 2	; if we're running NMOS, avoid JMP ($xxFF) bug
 tptr	.word 0		; temporary var
 
 
