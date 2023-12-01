@@ -379,34 +379,11 @@ noy
 	rts
 	.)
 
-	;----------------------------------------------------------------
-	; virtual screen to print to from driver
-	; print output is collected, and - if there is something - 
-	; recalled at the end of the poll, waiting for a key
-	; to clear the buffer
-	.(
+	.bss
 tmpx	.byt 0
-tmpy	.byt 0
-tmpc	.byt 0
+	.text
 
-line	.byt 0	; current line
-col	.byt 0	; current col
-+SCREENCOL=col
-
-colp	.byt 0, 40, 80, 120, 160, 200
-
-LINES	=6	; 6 lines
-COLS	=40	; with 40 cols each (max below 256 bytes)
-SCRLEN	=LINES*COLS
-
-SCREEN	=SCRBASE
-
-&init_scr .(
-	jsr clrscr
-	rts
-	.)
-
-&printc2 .(
+printc2 .(
 	; write a char into the key buffer (if not filled already)
 	php
 	sei
@@ -421,110 +398,6 @@ full 	ldx tmpx
 	rts
 	.)
 
-+printc	.(
-	stx tmpx
-	sty tmpy
-	sta tmpc
-	cmp #$20
-	bcs printable
-	cmp #13
-	beq nextl
-printable
-	ldy line
-	lda colp,y
-	clc
-	adc col
-	tay
-	lda tmpc
-	and #$ff-$40	; to screen code
-	ora #$80	; invers
-	sta screenbuf,y
-nextc	inc col
-	lda col
-	cmp #COLS
-	bcc endprint
-nextl	lda #0
-	sta col
-	inc line
-	lda line
-	cmp #LINES
-	bcc endprint
-	jsr show
-endprint
-	ldx tmpx
-	ldy tmpy
-	lda tmpc
-	rts
-	.)
-
-clrscr 	.(
-	ldy #0
-	sty line
-	sty col
-	lda #$a0	; space, inverted
-	ldy #SCRLEN
-l	sta screenbuf-1,y
-	dey
-	bne l
-	rts
-	.)
-
-&scr_flush .(
-	lda col
-	ora line
-	beq noshow
-	jsr show
-noshow	rts
-	.)
-
-	; this routine swaps the screenbuf with the start of the actual screen
-	; then waits for a keypress
-show	.(
-	jsr swap
-	jsr waitkeypress
-	jsr swap
-	jsr clrscr
-	rts
-	.)
-
-waitkeypress .(
-;	jmp waitloop
-	php
-	cli
-l	lda $9e
-	beq l
-	sei
-	jsr $e003	; does a CLI at the end
-	plp
-	rts
-	.)
-
-swap	.(
-	ldy #SCRLEN
-sl	ldx screenbuf-1,y
-	lda SCREEN-1,y
-	sta screenbuf-1,y
-	txa
-	sta SCREEN-1,y
-	dey
-	bne sl
-	rts
-	.)
-
-screenbuf .dsb SCRLEN
-
-waitloop
-	.(
-	ldx #0
-	ldy #0
-l	dex
-	bne l
-	dey
-	bne l
-	rts
-	.)
-
-	.)
 
 newirq2  .(
         ; the PET sets the MTR line on the tape, no matter what,

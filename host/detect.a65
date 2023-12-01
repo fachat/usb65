@@ -178,9 +178,9 @@ hub
 	sty ptr+1
 	tax
 	lda #13
-	jsr printc
+	jsr log_printc
 	lda #")"
-	jsr printc
+	jsr log_printc
 	ldy #0
 l	lda (ptr),y
 	jsr hexout
@@ -188,7 +188,7 @@ l	lda (ptr),y
 	dex
 	bne l
 	lda #13
-	jmp printc
+	jmp log_printc
 	.)
 
 print_dev_desc .(
@@ -201,7 +201,7 @@ print_dev_desc .(
 	lda (ptr),y
 	jsr hexout
 	lda #13
-	jsr printc
+	jsr log_printc
 
 	ldy #MSG_VENDOR_PRODUCT
 	jsr print
@@ -212,7 +212,7 @@ print_dev_desc .(
 	lda (ptr),y
 	jsr hexout
 	lda #","
-	jsr printc
+	jsr log_printc
 	ldy #DESC_DEV_PRODUCT+1
 	lda (ptr),y
 	jsr hexout
@@ -220,7 +220,7 @@ print_dev_desc .(
 	lda (ptr),y
 	jsr hexout
 	lda #13
-	jsr printc
+	jsr log_printc
 
 	ldy #MSG_CLASS_SUBCLASS
 	jsr print
@@ -228,12 +228,12 @@ print_dev_desc .(
 	lda (ptr),y
 	jsr hexout
 	lda #","
-	jsr printc
+	jsr log_printc
 	ldy #DESC_DEV_SUBCLASS
 	lda (ptr),y
 	jsr hexout
 	lda #13
-	jsr printc
+	jsr log_printc
 
 	ldy #DESC_DEV_MAXREQSIZE
 	lda (ptr),y
@@ -289,7 +289,7 @@ pr	lda (ptr),y
 	dex
 	bne pr
 cr	lda #13
-	jmp printc
+	jmp log_printc
 err	jsr hexout
 	jmp cr
 	.)
@@ -302,7 +302,7 @@ isolatin1outc .(
 	and #$df
 	.byt $2c
 or80	ora #$80
-ok	jmp printc
+ok	jmp log_printc
 	.)
 	
 

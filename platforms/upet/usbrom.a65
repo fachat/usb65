@@ -1,0 +1,197 @@
+/*
+    (C) 2011-2013 Andre Fachat
+
+    This file is part of the 6502 USB Host Driver.
+
+    The 6502 USB Host Driver is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The 6502 USB Host Driver is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    Lesser GNU General Public License for more details.
+
+    You should have received a copy of the Lesser GNU General Public License
+    along with the 6502 USB Host Driver. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/*
+ * This code provides the USB driver in lower memory, so that it can be called
+ * from interrupt.
+ * 
+ * Log output is into a rolling buffer in a higher upet screen
+ *
+ * Theory of operation:
+ *
+ * This driver code is put into an alternate 32k memory area that is swapped with the
+ * BASIC memory when the driver is called during an interrupt.
+ * So, it has its own stack and zeropage (potentialy shared with other interrupt drivers)
+ *
+ * Log output is sent to a 4 page "screen" in the video bank so you could in theory 
+ * configure the Viccy video chip to show the log. The screen is handled as rolling buffer,
+ * so time-consuming scroll is avoided.
+ *
+ * The actual code to handle the interrupt from the BASIC4 kernal ROM is in a companion
+ * file that is patched into some unused ROM area (e.g. $fd60-$ff90, or even in BASIC space
+ * at $dec8-$dfff. 
+ *
+ * This code switches low memory when needed and calls the driver. It also handles switching
+ * back to normal BASIC low memory when the keyboard and mouse callbacks are called
+ * (more specifically printc2 to put a char into the keyboard buffer)
+ * 
+ */
+
+#undef	DEBUG
+#undef	DEBUG_POLL
+#undef	DEBUG_HW
+
+#define	XMAX	#9	; at $e3 for 80 cols, or $03eb for 40 cols - so use constant
+
+#include "hostmsg.i65"
+
+	.zero
+
+	; enable pointers to be relocated
+
+; print routine pointer
+ZPRINTPTR	.word 0
+; device driver pointer
+ZUDEVPTR1	.word 0
+; general pointer within USB code
+ptr		.word 0
+; debug code pointer (to save inline string address)
+dbg_ptr		.word 0
+
+	.(
+
+	; companion addresses in ROM
+COMPBASE	=$df00
+usb_pause	=COMPBASE + 9
+usb_appendkey	=COMPBASE + 12
+
+&pause		=usb_pause
+printc2		=usb_appendkey
+
+	jmp init
+	jmp usb_polldev
+
+	;----------------------------------------------
+	; init inits everything, and checks for the hardware
+	; returns error (C=1) if no hardware is found.
+	; If ok (C=0), the companion enables the polling
+	; from the interrupt
+	; 
+init	.(
+	jsr setup_io
+
+	jsr log_init
+
+        ldy #MSG_COPYRIGHT                                
+        jsr print                                         
+                                                          
+        jsr usb_init                                      
+        bcc hwfound                                       
+        tay                     ; error number            
+        jsr print                                         
+	sec
+        rts                                               
+hwfound                                                   
+        jsr prversion                                                             
+
+        clc                                                                         
+        rts
+	.)
+
+	; callback from debug code. Unused here
++waitkey .(
+	rts
+	.)
+
+prversion .(
+	tax
+	bne v15
+	ldy #MSG_V12
+	.byt $2c
+v15	ldy #MSG_V15
+	jmp print
+	.)
+
+
+	;----------------------------------------------------------------
+	; those callbacks are being called from the driver, i.e. 
+	; actually from within somewhere in the code. We need
+	; to protect the output
+
+; callback from the keyboard code
+; ac contains key from keyboard (in PETSCII)
+&usb_kbd_rx_key_cb .(
+	jsr printc2
+	rts
+	.)
+	
+
+; callback from the mouse code
+; ac contains buttons
+; x/y contain x resp. y displacement
+&usb_mouse_rx_cb .(
+
+	and #$07
+	beq nom
+	cmp #1		; mouse button 1
+	bne nocr
+
+	lda #13		; output CR for mouse button 1
+	jsr printc2
+	jmp nom
+
+nocr	pha 
+	lda #"M"
+	jsr printc2
+	pla
+	ora #"0"
+	jsr printc2
+nom	
+	txa
+	beq nox
+	rol		; bit 7 into carry
+	txa		; restore orig value
+	ror		; carry into bit, sign-extended shift right
+	tax
+	bmi left
+right	lda #$1d
+	jsr printc2
+	;dex		; do not loop, as this makes the mouse way too fast
+	;bne right
+	;beq nox
+	bne nox		; printc has php/plp pair
+left	lda #$9d
+	jsr printc2
+	;inx
+	;bne left
+nox
+	tya
+	beq noy
+	rol
+	tya
+	ror
+	tay
+	bmi up
+down	lda #$11
+	jsr printc2
+	;dey
+	;bne down
+	;beq noy
+	bne noy
+up	lda #$91
+	jsr printc2
+	;iny
+	;bne up
+noy
+	rts
+	.)
+
+
+	.)
+

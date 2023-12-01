@@ -23,7 +23,7 @@
 	
 /* globals */
 
-printc=$ffd2
+log_printc=$ffd2
 
 
 	.(
@@ -41,7 +41,6 @@ eol	.word 0
 	jmp start
 
 	.)
-#include "debug.a65"
 	.(
 
 irqvec  =$90
@@ -61,8 +60,6 @@ ZUDEVPTR1	.word 0		;=$1f
 
 /* current screen column for debug, so we can enter cr when appropriate */
 &SCREENCOL	=$c6
-
-#include "hostmsg.a65"
 
 iniirq  .(
         lda irqvec
@@ -162,7 +159,7 @@ start	.(
 	jsr iniirq
 
 	lda #14
-	jsr printc		; lower/upper case mode
+	jsr log_printc		; lower/upper case mode
 
 	ldy #MSG_COPYRIGHT
 	jsr print
@@ -230,7 +227,7 @@ p1	cmp VCOUNT
 ; ac contains key from keyboard (in PETSCII)
 &usb_kbd_rx_key_cb .(
 	inc $a7
-	jsr printc
+	jsr log_printc
 	dec $a7
 	rts
 	.)
@@ -246,7 +243,7 @@ p1	cmp VCOUNT
 	beq nom
 	pha 
 	lda #"M"
-	jsr printc
+	jsr log_printc
 	pla
 	jsr hexout
 nom	
@@ -254,12 +251,12 @@ nom
 	beq nox
 	bmi left
 right	lda #$1d
-	jsr printc
+	jsr log_printc
 	dex
 	bne right
 	beq nox
 left	lda #$9d
-	jsr printc
+	jsr log_printc
 	inx
 	bne left
 nox
@@ -267,12 +264,12 @@ nox
 	beq noy
 	bmi up
 down	lda #$11
-	jsr printc
+	jsr log_printc
 	dey
 	bne down
 	beq noy
 up	lda #$91
-	jsr printc
+	jsr log_printc
 	iny
 	bne up
 noy

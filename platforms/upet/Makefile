@@ -1,8 +1,9 @@
 
 MAIN=upetusb
+ROM=petromcomp usbrom
 
-MAIN_O65=petusb4.o65
-TSR_O65=petusbdrv.o65
+MAIN_O65=petusb4.o65 
+TSR_O65=petusbdrv.o65 overlayscreen.o65
 
 MXTSR=mxdrvtsr
 MXLOADER=mxdrv
@@ -19,7 +20,7 @@ SLOBJ_O65=${SLDRIVER_O65} ${SLBIND_O65}
 HOST_O65=../../host/usb.o65 ../../host/hostmsg.o65
 COMMON_O65=../../common/debug.o65 
 
-all: ${MAIN} ${MXLOADER} ${SLLOADER}
+all: ${MAIN} ${MXLOADER} ${SLLOADER} ${ROM}
 
 ###############################################
 # base
@@ -41,6 +42,7 @@ petusbdrv.o65: petusbdrv.a65
 	xa -R -U -XMASM -bt 24576 -I../../common -P $(patsubst %.o65,%.lst,$@) -I../../host -DSPIADDR=2 -o $@ $<
 
 ###############################################
+# Using MAX3421 driver
 
 ${MAIN}.o65: ${MAIN_O65} ${HOST_O65} ${COMMON_O65} ${MXOBJ_O65}
 	ldo65 -G -v -v -o $@ $^
@@ -70,6 +72,24 @@ ${SLLOADER}: petusbloader.o65 ${SLTSR}
 	reloc65 -X -bt 1023 -o $@ $<
 	cat ${SLTSR} >> $@
 
+###############################################
+# binding patched into ROM, driver in bank 7
+
+petromcomp.o65: petromcomp.a65 
+	xa -w -R -XMASM -bt 57088 -P $(patsubst %.o65,%.lst,$@) -o $@ $<
+
+virtscreen.o65: virtscreen.a65 
+	xa -w -R -XMASM -bt 57088 -P $(patsubst %.o65,%.lst,$@) -o $@ $<
+
+petromcomp: petromcomp.o65 
+	# patched into $$df**
+	reloc65 -X -bt 57088 -o $@ $<
+
+usbrom: usbrom.o65 virtscreen.o65 ${HOST_O65} ${COMMON_O65} ${MXDRIVER_O65} ${MXBIND_O65}
+	# loaded to $$1000 in USB bank (7)
+	ldo65 -o $@..o65 $^
+	reloc65 -X -bt 4096 -o $@ $@..o65
+
 
 ###############################################
 
@@ -78,5 +98,6 @@ clean:
 	rm -f ${MAIN}
 	rm -f ${MXTSR} ${MXLOADER}
 	rm -f ${SLTSR} ${SLLOADER}
+	rm -f ${ROM}
 
 

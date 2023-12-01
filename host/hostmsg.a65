@@ -21,7 +21,7 @@
  * messages for the USB host controller
  *
  * requires the variable ZPRINTPTR to be set as zeropage
- * requires "printc" to be set to print a char without 
+ * requires "log_printc" to be set to print a char without 
  *    modifying other registers
  * requires "hexout" to print a hex byte value
  *
@@ -59,7 +59,7 @@ msg	lda idxl,y
 	ldy #0
 loop	lda (ZPRINTPTR),y
 	beq pend
-	jsr printc
+	jsr log_printc
 	iny
 	bne loop
 pend	rts
@@ -74,7 +74,7 @@ pend	rts
 	pla
 	jsr hexout
 	lda #13
-	jmp printc
+	jmp log_printc
 	.)
 
 	.data
@@ -145,7 +145,7 @@ nibout
         bcc x
         adc #$06        ; $41 ("a") - $30 ("0") - carry - 10 (AC)
 x       adc #$30        ; when digit, add "0"
-        jmp printc
+        jmp log_printc
         .)
 
 +dseparator .(
@@ -154,7 +154,7 @@ x       adc #$30        ; when digit, add "0"
 +separator 
 	lda #"-"
 	ldy #10
-l0	jsr printc
+l0	jsr log_printc
 	dey
 	bne l0
 	rts

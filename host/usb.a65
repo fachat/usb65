@@ -598,7 +598,7 @@ gotres
 	ldy curslot		; temporary slot number
 #ifdef DEBUG
 	lda #"?"
-	jsr printc
+	jsr log_printc
 	tya
 	jsr hexout
 	txa

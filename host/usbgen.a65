@@ -52,13 +52,13 @@ gotconf
 #ifdef DEBUG
         jsr print_hex_buffer
 	lda #13
-	jsr printc
+	jsr log_printc
 	lda ptr+1
 	jsr hexout
 	lda ptr
 	jsr hexout
 	lda #" "
-	jsr printc
+	jsr log_printc
 #endif
         ldy #DESC_CFG_TYPE
         lda (ptr),y

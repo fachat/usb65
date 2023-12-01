@@ -163,7 +163,7 @@ std_poll
 	; compute modifiers
 #ifdef DEBUG_KBD
 	lda #"K"
-	jsr printc
+	jsr log_printc
 	lda kbdbuf
 	jsr hexout
 #endif
