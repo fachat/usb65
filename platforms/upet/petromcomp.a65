@@ -33,10 +33,10 @@
 	.(
 	.text
 
-USBBANK	=7			; USB code is running in bank 7
+USBBLK	=14			; USB code is running in bank 7
 VBLOCK	=2			; video block in video bank (bank 8)
 
-MAP_USB	=USBBANK + (VBLOCK << 4)
+MAP_USB	=USBBLK + (VBLOCK << 4)
 MAP_BAS	=0 + (VBLOCK << 4)
 MAPREG	=$e802
 
@@ -47,6 +47,8 @@ driver_poll	=USBBASE+3
 
 lock	=$0700ff		; last byte in zeropage in bank 7
 tmpx	=$0700fe		; 
+;lock	=$033c
+;tmpx	=$033d
 	
 IRQV	=$90			; PET interrupt vector
 
@@ -78,7 +80,7 @@ install	.(
 	lda #%11100000
 	sta $e801	; protect memory $a-fxxx
 
-	lda #<-1
+	lda #0
 	sta lock
 	plp
 	rts
@@ -105,19 +107,30 @@ uninstall .(
 
 	.(
 	;-------------------------------
-	; init the driver in USB bank
+	; init the driver in USB bank and check for hardware
+	; if returns with C=0, we can install interrupt handler
 
 &init	ldx #MAP_USB
 	stx MAPREG
 
+	php
+	sei
+
+	lda #<-1
+	sta lock
+
 	jsr driver_init
 
-	bcs locked
-	lda #0
-	sta lock
-locked
 	ldx #MAP_BAS
 	stx MAPREG
+
+	bcs locked
+	plp
+	clc
+	jmp install
+	.byt $2c
+locked 	plp
+	sec
 	rts
 	.)
 

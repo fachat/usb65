@@ -1,6 +1,6 @@
 
 MAIN=upetusb
-ROM=petromcomp usbrom
+ROM=petromldr
 
 MAIN_O65=petusb4.o65 
 TSR_O65=petusbdrv.o65 overlayscreen.o65
@@ -90,6 +90,8 @@ usbrom: usbrom.o65 virtscreen.o65 ${HOST_O65} ${COMMON_O65} ${MXDRIVER_O65} ${MX
 	ldo65 -o $@..o65 $^
 	reloc65 -X -bt 4096 -o $@ $@..o65
 
+petromldr: petromldr.a65 petromcomp usbrom
+	xa -w -XMASM -P $@.lst -o $@ $<
 
 ###############################################
 
@@ -98,6 +100,6 @@ clean:
 	rm -f ${MAIN}
 	rm -f ${MXTSR} ${MXLOADER}
 	rm -f ${SLTSR} ${SLLOADER}
-	rm -f ${ROM}
+	rm -f ${ROM} usbrom petromcomp
 
 

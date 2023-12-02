@@ -64,6 +64,8 @@ ptr		.word 0
 ; debug code pointer (to save inline string address)
 dbg_ptr		.word 0
 
+	.text
+
 	.(
 
 	; companion addresses in ROM

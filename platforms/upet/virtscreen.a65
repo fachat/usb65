@@ -47,7 +47,7 @@ COLS	=40	; with 40 cols each (max below 256 bytes)
 SCRLEN	=LINES*COLS
 SPACE	=$20	; space character
 
-SCRBASE	=$089000
+SCRBASE	=$08b800
 
 &log_init .(
 	jsr clrscr
@@ -78,26 +78,16 @@ nextc	inc col
 
 nextl	lda #0
 	sta col
-	inc line
-	lda line
-	cmp #LINES
-	bcs scrollover
-
-	; current line was not last; clear next line
-	lda #COLS
-	clc
-	adc scrptr
-	sta scrptr
-	bcc clrline
-	inc scrptr
-	bne clrline
-
-	; restart from first line
-scrollover
+	ldx line
+	inx
+	cpx #LINES
+	bcc gonext
 	ldx #0
-	stx line
+gonext 	stx line
+
 	jsr setptr
 
+	.assert COLS < 128, "COLS too large"
 clrline	ldy #COLS-1
 	lda #SPACE
 c1	sta [scrptr],y
@@ -117,11 +107,21 @@ endprint
 	jsr setptr
 	stx col
 
-	ldy #COLS-1
+loop	ldy #COLS-1
 	lda #$20	; space, inverted
 l	sta [scrptr],y
 	dey
 	bpl l
+
+next	lda #COLS
+	clc
+	adc scrptr
+	sta scrptr
+	bcc cnt
+	inc scrptr+1
+cnt	inx
+	cpx #LINES
+	bcc loop
 	rts
 	.)
 
