@@ -120,6 +120,7 @@ hwfound
 	jmp newpos+12		; start2
 
 tomove
+	.bin 0,0, "mxdrvtsr"
 	.)
 
 	.)

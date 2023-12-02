@@ -1,0 +1,5 @@
+
+MAX3421E_EnMask	=0	; not used in SPI, but needed by USB host driver
+
+setup_io	rts
+
