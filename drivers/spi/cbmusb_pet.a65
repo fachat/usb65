@@ -51,8 +51,8 @@ SPI_CLK		=100			; 2*(N+2) = 24us per SPI bit for T2
 ; init the SPI code
 &spi_init .(
 
-lda #"S"
-jsr $ffd2
+;lda #"S"
+;jsr $ffd2
 
 	; deselect device,
 	; VIA PB3 (SEL) as output and high
@@ -101,7 +101,7 @@ jsr $ffd2
 	; disable shift register, CA1, CBx interrupts
 	lda #%00011110
 	sta SPIVIA+VIA_IER
-#if 1
+#if 0
 	;---------------------------------
 	; Alternative 1 - shift out under T2
 	;

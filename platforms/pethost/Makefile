@@ -52,6 +52,7 @@ ${MXTSR}: ${TSR_O65} ${HOST_O65} ${COMMON_O65} ${MXOBJ_O65}
 
 ${MXLOADER}: ${MXTSR} petusbloader.o65 
 	reloc65 -X -bt 1023 -o $@ petusbloader.o65
+	cat ${MXTSR} >> $@
 
 ###############################################
 

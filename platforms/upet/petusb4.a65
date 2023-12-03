@@ -176,8 +176,8 @@ start	.(
 hwfound
 	jsr prversion
 
-	lda #0
-	sta $a7			; crude method to enable cursor flash
+	;da #0
+	;sta $a7			; crude method to enable cursor flash
 poll
 	jsr usb_polldev
 	bcs error
