@@ -79,7 +79,7 @@ pend	rts
 
 	.data
 
-m0	.asc "COPYRIGHT 2011 A.FACHAT",13,0
+m0	.asc "COPYRIGHT 2011,2023 A.FACHAT",13,0
 m1	.asc "VENDOR, PRODUCT: ",0
 m2	.asc "CLASS, SUBCLASS: ",0
 m3	.asc "MAX PACKET SIZE: ",0

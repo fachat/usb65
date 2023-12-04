@@ -38,53 +38,53 @@
  * 
  * interface description
  *
- * sl811d_init
+ * usbdev_init
  *      checks presence of hardware (SL811);
  *      return clc when ok, sec when not found
  *	In AC speed; 0=low, 1=full speed
  *      Out - returns the maximum number of 
  *	endpoints supported by driver/hardware in ac
- * sl811d_set_maxlen
+ * usbdev_set_maxlen
  *	in xr=endpoint, ac=maximum transaction buffer length
- *	must be called before sl811d_start
- * sl811d_start
+ *	must be called before usbdev_start
+ * usbdev_start
  *	when this method is called, the driver enables
  *	the interrupt generation, so that the interrupt
  *	routine must then call the follwing interrupt callback
- * sl811d_reset
+ * usbdev_reset
  *	this is called when a USB reset is received
- *	(which is automatically detected by sl811d_int)
- * sl811d_int
+ *	(which is automatically detected by usbdev_int)
+ * usbdev_int
  *	interrupt callback; calls into the driver from the
  *	actual interrupt routine; handles the sl811 interrupt
- *	that has been set up with sl811d_start
+ *	that has been set up with usbdev_start
  *	calls back into the callbacks defined in the channel
  *	control blocks when a USB transaction has completed.
  *	Those callback routines then call into the
  *	following routines:
  *
- * 	sl811d_set_addr
+ * 	usbdev_set_addr
  *		in ac=USB device address, called to set the device
  *		address after a set-address call from the host
- *	sl811d_send_ack
+ *	usbdev_send_ack
  *		in xr=endpt, a/y=callback address when ack is sent
- *	sl811d_send_stall
+ *	usbdev_send_stall
  *		in xr=endpt, a/y=callback address when stall is sent
- *	sl811d_recv_ack
+ *	usbdev_recv_ack
  *		in xr=endpt, a/y=callback when ack is received
  *		Note in the current version this is called without
  *		actually waiting for the ACK, as the callback sets up
  *		the receive for the next setup and timing is tight
- * 	sl811d_set_rx
+ * 	usbdev_set_rx
  *		Set an endpoint receive buffer, a/y is the channel control
  *		block, x is the endpoint number
  *		Note an endpoint can at any time be either rx or tx, not both
- * 	sl811d_set_tx
+ * 	usbdev_set_tx
  *		Set an endpoint transmit buffer, a/y is the channel control
  *		block, x is the endpoint number
  *		Note an endpoint can at any time be either rx or tx, not both
  *
- * sl811d_is_active
+ * usbdev_is_active
  *	checks if an endpoint is still active
  *	in: x=endpoint
  *	out: CLC if not active, SEC if active
@@ -95,6 +95,7 @@
 
 #include "usbdev.i65"
 #include "sl811_dev.i65"
+#include "debug.i65"
 
 ;-----------------------------------------------------------
 ; data structures
@@ -140,7 +141,7 @@ regoff	.byt 0, $10, $20, $30	; register offset for endpoints 0-3
 ; initialization
 
 ; check; ac=speed; xr=device number
-&sl811d_init .(
+&usbdev_init .(
 	DMSG("SL811D_INIT")
 	; there is no version register in device mode
 	; so no easy check if/which HW is available
@@ -228,7 +229,7 @@ lowspeed2
 err     rts
         .)
 
-&sl811d_reset .(
+&usbdev_reset .(
 	lda #0		; initial device address
 	STREGD(SL811D_USBADDR)
 	STREGD(SL811D_CURDSET)
@@ -244,7 +245,7 @@ l1	sta endpst,x
 ;-----------------------------------------------------------
 ; start the operation
 
-&sl811d_start .(
+&usbdev_start .(
 	ldx #0
 	lda #$40	;  first usable buffer address
 inip	sta txpos,x
@@ -272,7 +273,7 @@ err_povf
 ; x is endpoints number
 ; a is the max length of the endpoint transfer
 ; TODO fix for >256 byte
-&sl811d_set_maxlen .(
+&usbdev_set_maxlen .(
 	cpx #MAX_ENDPOINTS
 	bcs end
 	cmp #MAX_BUFLEN+1
@@ -281,7 +282,7 @@ err_povf
 end	rts
 	.)
 
-&sl811d_set_addr .(
+&usbdev_set_addr .(
 	STREGD(SL811D_USBADDR)
 	clc
 	rts
@@ -290,7 +291,7 @@ end	rts
 ;-----------------------------------------------------------
 
 ; determine if the endpoint given is still active
-&sl811d_is_active .(
+&usbdev_is_active .(
 	lda endpst,x		; bit 7 is set when active
 	asl			; move into carry
 	rts
@@ -299,7 +300,7 @@ end	rts
 ;-----------------------------------------------------------
 ; interrupt routine
 
-&sl811d_int .(
+&usbdev_int .(
 	ldx #SL811D_INTSTAT
 	jsr loadregd
 	pha
@@ -369,7 +370,7 @@ loop	stx currep
 #ifdef DEBUG
 	pha
 	lda #"I"
-	jsr printc
+	jsr log_printc
 	txa
 	jsr hexout
 	pla
@@ -423,7 +424,7 @@ next
 int_rx	.(	
 #ifdef DEBUG
 	lda #"R"
-	jsr printc
+	jsr log_printc
 #endif
 	lda regoff,x
 	clc
@@ -545,7 +546,7 @@ no_callback
 int_tx	.(
 #ifdef DEBUG
 	lda #"T"
-	jsr printc
+	jsr log_printc
 #endif
 	lda regoff,x
 	clc
@@ -616,7 +617,7 @@ repeat
 #ifdef DEBUG
 	pha
 	lda #"P"
-	jsr printc
+	jsr log_printc
 	txa
 	jsr hexout
 	tya
@@ -649,7 +650,7 @@ lp1	sty SL811D_REG
 
 ;-----------------------------------------------------------
 
-&sl811d_send_stall .(
+&usbdev_send_stall .(
 	DMSG("SEND STALL")
 	cpx #MAX_ENDPOINTS
 	bcs err
@@ -663,7 +664,7 @@ lp1	sty SL811D_REG
 err	rts
 	.)
 
-&sl811d_send_ack .(
+&usbdev_send_ack .(
 	DMSG("SEND ACK")
 	cpx #MAX_ENDPOINTS
 	bcs err
@@ -677,7 +678,7 @@ err	rts
 err	rts
 	.)
 
-&sl811d_recv_ack .(
+&usbdev_recv_ack .(
 	; don't care, we handle that with automatic 
 	; receive (note: we should handle the return value
 	; of the auto rx EPB interrupt appropriately though!)
@@ -715,7 +716,7 @@ setstallack .(
 	.)
 
 
-&sl811d_set_rx .(
+&usbdev_set_rx .(
 	php	; save against interrupt routine
 	sei
 
@@ -742,7 +743,7 @@ setstallack .(
 	.)
 
 
-&sl811d_set_tx .(
+&usbdev_set_tx .(
 	php	; save against interrupt routine
 	sei
 
@@ -763,7 +764,7 @@ setstallack .(
 
 #ifdef DEBUG
 	lda #"K"
-	jsr printc
+	jsr log_printc
 	lda txmax,x
 	jsr hexout
 	lda txlen,x
@@ -806,7 +807,7 @@ setstallack .(
 #ifdef DEBUG
 	pha
 	lda #"P"
-	jsr printc
+	jsr log_printc
 	txa
 	jsr hexout
 	tya
@@ -1002,7 +1003,7 @@ set_txlen .(
 doit	
 #ifdef DEBUG
 	lda #"L"
-	jsr printc
+	jsr log_printc
 	lda txlen,x
 	jsr hexout
 #endif
@@ -1039,7 +1040,7 @@ step	.(
 set_tx2sl .(
 #ifdef DEBUG
 	lda #"X"
-	jsr printc
+	jsr log_printc
 #endif
 	lda regoff,x
 	clc

@@ -7,5 +7,5 @@ clean:
 	make -C drivers clean
 	make -C host clean
 	make -C common clean
-	#make -C device clean
+	make -C device clean
 

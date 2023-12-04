@@ -32,7 +32,7 @@ ${COMMON_O65}:
 
 # for listing with correct address
 petusbdrv.o65: petusbdrv.a65
-	xa -R -U -XMASM -bt 24576 -I../../common -P $(patsubst %.o65,%.lst,$@) -I../../host -DSPIADDR=2 -o $@ $<
+	xa -R -U -XMASM -bt 24576 -I../../common -P $(patsubst %.o65,%.lst,$@) -I../../host -o $@ $<
 
 ###############################################
 # Using MAX3421E driver

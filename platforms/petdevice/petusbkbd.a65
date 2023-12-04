@@ -40,6 +40,24 @@
 #define	ENDPOINT_NO	1
 #endif
 
+	
+	.zero
+zero	=*
+zerolen	=15
+; all pointers are used only by TAPE code
+; print routine pointer
+ZPRINTPTR       .word 0		; =$16	; $b1
+; device driver pointer
+ZUDEVPTR1       .word 0		; =$18	; b6
+; general pointer within USB code
+ptr             .word 0		; =$1a	; b8
+; debug code pointer (to save inline string address)
+dbg_ptr         .word 0		; =$1c	; bb
+; print pointer
+pr_ptr          .word 0		; =$1e	; bb
+
+	.text
+
 	.(
 
 	.bss
@@ -66,22 +84,6 @@ eol	.word 0
 #endif
 
 
-	.zero
-zero	=*
-zerolen	=15
-; all pointers are used only by TAPE code
-; print routine pointer
-ZPRINTPTR       .word 0		; =$16	; $b1
-; device driver pointer
-ZUDEVPTR1       .word 0		; =$18	; b6
-; general pointer within USB code
-ptr             .word 0		; =$1a	; b8
-; debug code pointer (to save inline string address)
-dbg_ptr         .word 0		; =$1c	; bb
-; print pointer
-pr_ptr          .word 0		; =$1e	; bb
-
-	.text
 
 #include "devmsg.i65"
 #include "debug.i65"
@@ -146,11 +148,12 @@ buf	.dsb 16,0
 /* current screen column for debug, so we can enter cr when appropriate */
 #define SCREENCOL       $c6
 
+/*
 #include "devmsg.a65"
 #include "debug.a65"
 #include "usbdev.a65"
 #include "kbddev.a65"
-
+*/
 	.(
 	.bss
 
@@ -218,7 +221,7 @@ cfglen	=*-cfgdesc
 ; Note: this descriptor should go into kbddev.a65, but
 ; its length is part of the interface descriptor ...
 ; TODO: Need a way to "build" the config from device parts dynamically
-&repdesc ; report descriptor for HID device
++repdesc ; report descriptor for HID device
 	; see HID 1.11 spec appendix E.6
 	; warning, here be dragons...
 	.byt 5, 1	; Usage page: generic desktop
@@ -247,7 +250,7 @@ cfglen	=*-cfgdesc
 	.byt $29, $65	; usage maximum: 101
 	.byt $81, 0	; input: data/array - key array, 6 byte
 	.byt $c0	; end collection
-&repdesclen=*-repdesc
++repdesclen=*-repdesc
 	
 	.text
 
@@ -405,7 +408,7 @@ PRBLEN	=256
 	rts
 	.)
 
-&printc .(
+&log_printc .(
 	stx tmpx
 	ldx prwp
 	sta prbuf,x
@@ -449,7 +452,7 @@ clx	sta (pr_ptr),y
 	.)
 
 ; write into log buffer
-&printc	.(
++log_printc .(
 	php
 	sei
 	stx tmpx

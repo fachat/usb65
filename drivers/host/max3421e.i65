@@ -18,7 +18,7 @@
 */
 
 /*
- * MAX3420E register and bit definitions
+ * MAX3421E register and bit definitions
  */
 
 #ifndef MAX3421_H

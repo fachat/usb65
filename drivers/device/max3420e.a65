@@ -28,12 +28,14 @@
  *
  */
 
-#include "spi65b.i65"
+;#include "spi65b.i65"
 
 MAX3420E_EnMask = 0x08
 
 #include "max3420e.i65"
 #include "usbdev.i65"
+#include "devmsg.i65"
+#include "debug.i65"
 
 #define	DEBUG
 
@@ -43,53 +45,53 @@ MAX3420E_EnMask = 0x08
  * 
  * interface description
  *
- * max3420e_init
+ * usbdev_init
  *      checks presence of hardware;
  *      return clc when ok, sec when not found
  *      In AC speed; 0=low, 1=full speed
  *      Out - returns the maximum number of 
  *      endpoints supported by driver/hardware in ac
- * max3420e_set_maxlen
+ * usbdev_set_maxlen
  *      in xr=endpoint, ac=maximum transaction buffer length
- *      must be called before max3420e_start
- * max3420e_start
+ *      must be called before usbdev_start
+ * usbdev_start
  *      when this method is called, the driver enables
  *      the interrupt generation, so that the interrupt
  *      routine must then call the follwing interrupt callback
- * max3420e_reset
+ * usbdev_reset
  *      this is called when a USB reset is received
- *      (which is automatically detected by max3420e_int)
- * max3420e_int
+ *      (which is automatically detected by usbdev_int)
+ * usbdev_int
  *      interrupt callback; calls into the driver from the
  *      actual interrupt routine; handles the sl811 interrupt
- *      that has been set up with max3420e_start
+ *      that has been set up with usbdev_start
  *      calls back into the callbacks defined in the channel
  *      control blocks when a USB transaction has completed.
  *      Those callback routines then call into the
  *      following routines:
  *
- *      max3420e_set_addr
+ *      usbdev_set_addr
  *              in ac=USB device address, called to set the device
  *              address after a set-address call from the host
- *      max3420e_send_ack
+ *      usbdev_send_ack
  *              in xr=endpt, a/y=callback address when ack is sent
- *      max3420e_send_stall
+ *      usbdev_send_stall
  *              in xr=endpt, a/y=callback address when stall is sent
- *      max3420e_recv_ack
+ *      usbdev_recv_ack
  *              in xr=endpt, a/y=callback when ack is received
  *              Note in the current version this is called without
  *              actually waiting for the ACK, as the callback sets up
  *              the receive for the next setup and timing is tight
- *      max3420e_set_rx
+ *      usbdev_set_rx
  *              Set an endpoint receive buffer, a/y is the channel control
  *              block, x is the endpoint number
  *              Note an endpoint can at any time be either rx or tx, not both
- *      max3420e_set_tx
+ *      usbdev_set_tx
  *              Set an endpoint transmit buffer, a/y is the channel control
  *              block, x is the endpoint number
  *              Note an endpoint can at any time be either rx or tx, not both
  *
- * max3420e_is_active
+ * usbdev_is_active
  *      checks if an endpoint is still active
  *      in: x=endpoint
  *      out: CLC if not active, SEC if active
@@ -98,7 +100,7 @@ MAX3420E_EnMask = 0x08
 #define MAX_ENDPOINTS   4       /* code limit is < 128 */
 #define MAX_BUFLEN      64      /* 64 byte FIFOs */
 
-#include "spi65b.a65"
+;#include "spi65b.a65"
 
 	.(
 
@@ -137,18 +139,18 @@ cbacktd .dsb MAX_ENDPOINTS, 0   ; transient data for callback (given in y)
 	;------------------------------------
 	; HW stuff
 
-max3420e_hwinit .(
+usbdev_hwinit .(
 
 	; SPI = full duplex, INTLEVEL = negative level
 	; should set GPX if used, is not used here
 	wreg(rPINCTL, bmFDUPSPI+bmINTLEVEL)
 
-	jsr max3420e_hwreset
+	jsr usbdev_hwreset
 
 	rts
 	.)
 
-max3420e_hwreset .(
+usbdev_hwreset .(
 	
 	; chip reset
   	wreg(rUSBCTL, 0x20);	
@@ -172,7 +174,7 @@ l1	; read irq status
 	.)
 
 	.(
-&max3420e_enableints
+&usbdev_enableints
 	// ENABLE INTERRUPT
 
 	//wreg(rEPIEN,(bmSUDAVIE+bmIN3BAVIE+bmIN0BAVIE+bmIN2BAVIE)); 
@@ -236,7 +238,7 @@ next	spi_wra()
 writebytes .(
 #ifdef DEBUG
 	lda #"S"
-	jsr printc
+	jsr log_printc
 	;lda writefifo,x
 	;jsr hexout
 #endif
@@ -258,7 +260,7 @@ next	lda (ctrlptr),y
 	bne next
 #if 0 //def DEBUG
 	lda #"Y"
-	jsr printc
+	jsr log_printc
 	tya
 	jsr hexout
 #endif
@@ -278,7 +280,7 @@ next	lda (ctrlptr),y
 	max3420e_enable()
 #ifdef DEBUG
 	lda #"M"
-	jsr printc
+	jsr log_printc
 	txa
 	jsr hexout
 	lda writearm,x
@@ -327,15 +329,15 @@ ack_ep 	.(
 ; ----------------------------------------------------------------
 ; interface code
 
-&max3420e_init .(
+&usbdev_init .(
 
 	; can't really detect HW for now
 
         jsr spi_init
 
-        jsr max3420e_hwinit
+        jsr usbdev_hwinit
 
-        jsr max3420e_hwreset
+        jsr usbdev_hwreset
 
 	lda #MAX_ENDPOINTS		; number of supported endpoints
 	clc		; ok
@@ -344,7 +346,7 @@ ack_ep 	.(
 
 ; TODO fix for >256 byte
 ; in xr=endpoint, ac=maximum transaction buffer length
-&max3420e_set_maxlen .(
+&usbdev_set_maxlen .(
         cpx #MAX_ENDPOINTS
         bcs end
         cmp #MAX_BUFLEN+1	; max $40 bytes 
@@ -357,17 +359,17 @@ end     rts
 ; when this method is called, the driver enables
 ; the interrupt generation, so that the interrupt
 ; routine must then call the follwing interrupt callback
-&max3420e_start .(
+&usbdev_start .(
         ldx #0
 
-	jsr max3420e_enableints
+	jsr usbdev_enableints
 
         clc
         rts
         .)
 
-&max3420e_reset .(
-	jsr max3420e_enableints
+&usbdev_reset .(
+	jsr usbdev_enableints
 
         lda #0          ; initial device address
 
@@ -385,7 +387,7 @@ l1      sta endpst,x
 ;      that has been set up with sl811d_start
 ;      calls back into the callbacks defined in the channel
 ;      control blocks when a USB transaction has completed.
-&max3420e_int .(
+&usbdev_int .(
         ; check the EPIRQ bits
         rreg(rEPIRQ)
         sta itest1
@@ -431,7 +433,7 @@ l0	stx currep
 	; clear IN IRQ
 	wrac(rEPIRQ)
 #if 0 //def DEBUG
-lda #">":jsr printc
+lda #">":jsr log_printc
 lda itest1: jsr hexout
 #endif
         jsr do_in
@@ -478,7 +480,7 @@ doit
 do_in	.(
 #if 0 //def DEBUG
 	lda #"T"
-	jsr printc
+	jsr log_printc
 	txa
 	jsr hexout
         lda endpst,x
@@ -564,7 +566,7 @@ set_ptr .(
         rts
         .)
 
-&max3420e_send_stall .(
+&usbdev_send_stall .(
         DMSG("SEND STALL")
         cpx #MAX_ENDPOINTS
         bcs err
@@ -578,7 +580,7 @@ set_ptr .(
 err     rts
 	.)
 
-&max3420e_send_ack .(
+&usbdev_send_ack .(
         DMSG("SEND ACK")
         cpx #MAX_ENDPOINTS
         bcs err
@@ -592,7 +594,7 @@ err     rts
 err     rts
         .)
 
-&max3420e_recv_ack .(
+&usbdev_recv_ack .(
         ; don't care, we handle that with automatic 
         ; receive (note: we should handle the return value
         ; of the auto rx EPB interrupt appropriately though!)
@@ -616,7 +618,7 @@ setstallack .(
         rts
         .)
 
-&max3420e_set_rx .(
+&usbdev_set_rx .(
 	DMSG("SET_RX")
         php     ; save against interrupt routine
         sei
@@ -637,7 +639,7 @@ setstallack .(
         rts
         .)
 
-&max3420e_set_tx .(
+&usbdev_set_tx .(
 	/*DMSG("SET_TX")*/
         php     ; save against interrupt routine
         sei
@@ -659,7 +661,7 @@ setstallack .(
 
 #if 0 //def DEBUG
         lda #"K"
-        jsr printc
+        jsr log_printc
         lda txmax,x
         jsr hexout
         lda txlen,x
@@ -715,7 +717,7 @@ set_rxtx .(
         sty setptr+1
 #ifdef DEBUG
 	lda #"P"
-	jsr printc
+	jsr log_printc
 #endif
         ldy #USBD_CHAN_BUF      ; copy over the buffer address
         lda (setptr),y
@@ -779,7 +781,7 @@ set_txlen .(
 doit
 #ifdef DEBUG
         lda #"L"
-        jsr printc
+        jsr log_printc
         lda txlen,x
         jsr hexout
 #endif
@@ -788,13 +790,13 @@ doit
 
 
 ; determine if the endpoint given is still active
-&max3420e_is_active .(
+&usbdev_is_active .(
         lda endpst,x            ; bit 7 is set when active
         asl                     ; move into carry
         rts
         .)
 
-&max3420e_set_addr .(
+&usbdev_set_addr .(
         ; ack's setting of address (transaparently handled by the max3420e)
         ;rregAS(rFNADDR)
         clc

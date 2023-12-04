@@ -25,10 +25,18 @@
 #define	MAX3420_H
 
 #define	max3420e_enable()	\
-	spi_enable(MAX3420E_EnMask)
+	lda #<MAX3420E_EnMask	:\
+	jsr spi_enable
 
 #define	max3420e_disable()	\
-	spi_disable(MAX3420E_EnMask)
+	lda #<MAX3420E_EnMask	:\
+	jsr spi_disable
+
+#define	spi_wraNR()		\
+	jsr spi_wra
+
+#define spi_wra()		\
+	jsr spi_wra
 
 #if 0
 

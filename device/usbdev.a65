@@ -18,6 +18,8 @@
 */
 
 #include "usb.i65"
+#include "usbdev.i65"
+#include "debug.i65"
 
 /*
  * This is the main USB device driver. It provides a common layer
@@ -95,8 +97,6 @@
 #define	usbdev_set_addr		sl811d_set_addr
 #define	usbdev_is_active 	sl811d_is_active
 
-#include "sl811_dev.a65"
-
 #else
 #ifdef MAX3420_DEV
 
@@ -113,24 +113,24 @@
 #define	usbdev_set_addr		max3420e_set_addr
 #define	usbdev_is_active 	max3420e_is_active
 
-#include "max3420e.a65"
-
 #endif	// MAX3420E
 #endif 	// SL811
 
 ;-----------------------------------------------------------------
 ; pass through some usbdev routines
-&usbd_int =usbdev_int
-&usbd_set_maxlen =usbdev_set_maxlen
-&usbd_set_channel_tx =usbdev_set_tx
+; Note: re-use of unknown labels this way is not (yet?) supported in xa 2.4.1
+
+&usbd_int 		jmp usbdev_int		; =usbdev_int
+&usbd_set_maxlen 	jmp usbdev_set_maxlen	; =usbdev_set_maxlen
+&usbd_set_channel_tx	jmp usbdev_set_tx	; =usbdev_set_tx
 
 &usbd_setup_send_ack=send_ack_cb
 &usbd_setup_send_stall=send_stall
 &usbd_setup_recv_ack=recv_ack_cb
 
-&usbd_data_recv_ack=usbdev_recv_ack
+&usbd_data_recv_ack	jmp usbdev_recv_ack	; =usbdev_recv_ack
 
-&usbd_is_active=usbdev_is_active
+&usbd_is_active		jmp usbdev_is_active	; =usbdev_is_active
 
 ;-----------------------------------------------------------------
 
@@ -396,7 +396,7 @@ setaddr_cb .(
 
 ;-----------------------------------------------------------------
 
-usbd_cb_reset .(
+&usbd_cb_reset .(
 	DMSG("RESET CALLBACK")
 	jsr usbdev_reset
 	jmp usbd_start
