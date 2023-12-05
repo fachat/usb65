@@ -1,0 +1,12 @@
+
+
+;SL811_HOST	=$9c98
+SL811_DEVICE	=$9c90
+
+prbuf		=$b000
+
+setup_io	
+		lda #$10
+		sta $effb	; map ring buffer to $bxxx
+		rts
+

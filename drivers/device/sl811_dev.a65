@@ -96,6 +96,7 @@
 #include "usbdev.i65"
 #include "sl811_dev.i65"
 #include "debug.i65"
+#include "devmsg.i65"
 
 ;-----------------------------------------------------------
 ; data structures

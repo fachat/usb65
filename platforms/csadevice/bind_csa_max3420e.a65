@@ -1,0 +1,9 @@
+
+MAX3421E_EnMask	=0	; not used in SPI, but needed by USB host driver
+
+prbuf		=$b000	; print ring buffer
+
+setup_io	lda #$10
+		sta $effb	; map print ring buffer
+		rts
+

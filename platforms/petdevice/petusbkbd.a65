@@ -90,8 +90,10 @@ eol	.word 0
 #include "usb.i65"
 
 start	.(
-	lda #$10
-	sta $effb
+	jsr setup_io
+
+	;lda #$10
+	;sta $effb
 
 	ldy #0
 	tya
@@ -527,7 +529,7 @@ tmpx	.byt 0
 tmpy	.byt 0
 
 ;prbuf	.dsb PRBLEN, 0	; print ring buffer
-prbuf	=$b000 		; print ring buffer
+;prbuf	=$b000 		; print ring buffer
 
 	.text
 
