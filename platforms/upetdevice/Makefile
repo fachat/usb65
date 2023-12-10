@@ -1,20 +1,24 @@
 
-MAIN=petusbkbd
+MXMAIN=upetmxkbd
+SLMAIN=upetslkbd
 
 MAIN_O65=petusbkbd.o65
 
-MXDRIVER_O65=../../drivers/device/max3420e.o65 ../../drivers/spi/cbmusb_pet.o65
-MXBIND_O65=bind_petup_max3420e.o65
+MXDRIVER_O65=../../drivers/device/max3420e.o65 ../../drivers/spi/spi65b.o65
+MXBIND_O65=bind_upet_csa_max3421e.o65
+
+SLDRIVER_O65=../../drivers/device/sl811_dev.o65 
+SLBIND_O65=bind_upet_csa_sl811_dev.o65
 
 DEVICE_O65=../../device/usbdev.o65 ../../device/devmsg.o65 ../../device/kbddev.o65
 COMMON_O65=../../common/debug.o65
 
-all: ${MAIN}
+all: ${SLMAIN} ${MXMAIN}
 
 ###############################################
 # base
 
-${MXDRIVER_O65}:
+${MXDRIVER_O65} ${SLDRIVER_O65}:
 	make -C ../../drivers
 
 ${DEVICE_O65}:
@@ -29,7 +33,11 @@ ${COMMON_O65}:
 ###############################################
 # Main using max3420e driver
 
-${MAIN}: ${MAIN_O65} ${DEVICE_O65} ${COMMON_O65} ${MXDRIVER_O65} ${MXBIND_O65}
+${MXMAIN}: ${MAIN_O65} ${DEVICE_O65} ${COMMON_O65} ${MXDRIVER_O65} ${MXBIND_O65}
+	ldo65 -G -v -v -o $@.tmp $^
+	reloc65 -bt 1023 -bz 66 -X -o $@ $@.tmp
+
+${SLMAIN}: ${MAIN_O65} ${DEVICE_O65} ${COMMON_O65} ${SLDRIVER_O65} ${SLBIND_O65}
 	ldo65 -G -v -v -o $@.tmp $^
 	reloc65 -bt 1023 -bz 66 -X -o $@ $@.tmp
 
@@ -60,6 +68,7 @@ ${MAIN}: ${MAIN_O65} ${DEVICE_O65} ${COMMON_O65} ${MXDRIVER_O65} ${MXBIND_O65}
 
 clean:
 	rm -f *.o65 *.lst *.lab *.tmp
-	rm -f ${MAIN}
+	rm -f ${SLMAIN} ${MXMAIN}
+
 
 

@@ -25,20 +25,20 @@
  * (C) 2011-2013 A. Fachat
  */
 
-//#undef	SL811_DEV
-//#define	MAX3420_DEV
+;#undef	SL811_DEV
+;#define	MAX3420_DEV
 
 #define	DEBUG
 
-#ifdef MAX3420_DEV
-#echo EP 3
-#define	MAX_EP0_TXLEN	64
-#define	ENDPOINT_NO	3
-#else
-// SL811HS
-#define	MAX_EP0_TXLEN	8
-#define	ENDPOINT_NO	1
-#endif
+;#ifdef MAX3420_DEV
+;#echo EP 3
+;#define	MAX_EP0_TXLEN	64
+;#define	ENDPOINT_NO	3
+;#else
+;// SL811HS
+;#define	MAX_EP0_TXLEN	8
+;#define	ENDPOINT_NO	1
+;#endif
 
 	
 	.zero

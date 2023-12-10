@@ -4,8 +4,12 @@
 
 ETHSEL          =       $01
 
-SPIBASE		=  	$e8a0
+;SPIBASE		=  	$e8a0
 
+; defining dependend labels based on an undefined one is not (yet?) supported in xa
+; so we need to use the pre-processor to define them
+
+#if 0
 SPIDR           =      (SPIBASE)   	; SPI data port
 SPISR           =      (SPIBASE+1)   	; SPI status
 SPICR           =      (SPIBASE+1)   	; SPI control
@@ -13,7 +17,15 @@ SPIDIV          =      (SPIBASE+2)   	; SPI SCLK divisor (NOTE - lower 4 bits on
 SPIISRB         =      (SPIBASE+2)   	; SPI Interrupt status register (upper 4 bits)
 SPISSRB         =      (SPIBASE+3)   	; SPI Slave Select register (lower 4 bits)
 SPIIERB         =      (SPIBASE+3)   	; SPI Interrupt enable register (upper 4 bits)
-
+#else
+#define SPIDR           SPIBASE   	// SPI data port
+#define SPISR           SPIBASE+1   	// SPI status
+#define SPICR           SPIBASE+1   	// SPI control
+#define SPIDIV          SPIBASE+2   	// SPI SCLK divisor (NOTE - lower 4 bits only)
+#define SPIISRB         SPIBASE+2   	// SPI Interrupt status register (upper 4 bits)
+#define SPISSRB         SPIBASE+3   	// SPI Slave Select register (lower 4 bits)
+#define SPIIERB         SPIBASE+3   	// SPI Interrupt enable register (upper 4 bits)
+#endif
 
 #endif
 

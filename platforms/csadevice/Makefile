@@ -4,7 +4,7 @@ MXMAIN=mxpetkbd
 
 MAIN_O65=petusbkbd.o65
 
-MXDRIVER_O65=../../drivers/device/max3420e.o65 ../../drivers/spi/cbmusb_pet.o65
+MXDRIVER_O65=../../drivers/device/max3420e.o65 ../../drivers/spi/spi65b.o65
 MXBIND_O65=bind_csa_max3420e.o65
 
 SLDRIVER_O65=../../drivers/device/sl811_dev.o65 

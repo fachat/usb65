@@ -1,0 +1,32 @@
+
+SPIBASE		=$e8a0
+MAX3420E_EnMask = $08
+
+MAX_EP0_TXLEN   =64
+ENDPOINT_NO     =3
+
+prbuf		=$8800		; print ring buffer
+
+; note: SPI65 is at $e8a0 - therefore we cannot map the Viccy registers into memory
+; but we also do not need to map the CS/A IO to $9xxx (but do it anyway)
+
+setup_io	lda #1+4	; CS/A I/O window on $9xxx
+		sta 59396	; window control
+
+;		lda #32
+;		sta $e880
+;		lda #16+64
+;		sta $e881	; map Viccy registers to memory
+;		rts
+
+		; enable right border to see inc/dec border colour events
+;		lda #38
+;		sta $e885
+;		lda #2
+;		sta $e880+27
+
+; TODO: xa test case
+;		lda $e880+5, 38
+;		lda $e880+27, 2
+		rts
+

@@ -3,6 +3,9 @@
 ;SL811_HOST	=$9c98
 SL811_DEVICE	=$9c90
 
+MAX_EP0_TXLEN	=8
+ENDPOINT_NO	=1
+
 prbuf		=$b000
 
 setup_io	

@@ -1,5 +1,10 @@
 
-MAX3421E_EnMask	=0	; not used in SPI, but needed by USB host driver
+SPIBASE		=$e8a0
+MAX3420E_EnMask	=8	; not used in SPI, but needed by USB host driver
+
+; TODO: needs to get into the driver as exported global
+MAX_EP0_TXLEN	=64
+ENDPOINT_NO	=3
 
 prbuf		=$b000	; print ring buffer
 
