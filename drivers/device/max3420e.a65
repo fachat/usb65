@@ -35,9 +35,10 @@
 #include "max3420e.i65"
 #include "usbdev.i65"
 #include "devmsg.i65"
-#include "debug.i65"
 
 #define	DEBUG
+
+#include "debug.i65"
 
 /*
  * General principles of operation
@@ -249,7 +250,7 @@ writebytes .(
 	ldy #0
 next	lda (ctrlptr),y
 	spi_wraNR()
-#if 0 //def DEBUG
+#if 1 //def DEBUG
 	jsr hexout
 #endif
 	iny
@@ -537,7 +538,7 @@ call
         sta ctrlptr+1
         ora ctrlptr
         beq no_callback
-#if 0
+#if 1
 lda ctrlptr
 ldy ctrlptr+1
         DMSG("CALL")

@@ -25,22 +25,9 @@
  * (C) 2011-2013 A. Fachat
  */
 
-;#undef	SL811_DEV
-;#define	MAX3420_DEV
 
 #define	DEBUG
 
-;#ifdef MAX3420_DEV
-;#echo EP 3
-;#define	MAX_EP0_TXLEN	64
-;#define	ENDPOINT_NO	3
-;#else
-;// SL811HS
-;#define	MAX_EP0_TXLEN	8
-;#define	ENDPOINT_NO	1
-;#endif
-
-	
 	.zero
 zero	=*
 zerolen	=15
@@ -73,16 +60,6 @@ hdrstart
 	.byt 0
 eol	.word 0
 	.dsb hdrstart+17-* , $aa
-
-
-#ifdef PET
-#define	SL811_HOST	$ac98
-#define	SL811_DEVICE	$ac90
-#else
-#define	SL811_HOST	$ec98
-#define	SL811_DEVICE	$ec90
-#endif
-
 
 
 #include "devmsg.i65"

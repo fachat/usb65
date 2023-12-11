@@ -8,7 +8,7 @@ them generic enough so they can be reused in many 6502 computers.
 Currently supported functionalities:
 
 - Keyboard (host+device)
-- mouse (host+device)
+- mouse (host)
 - hub (as host, can enumerate devices connected via a hub! - currently sl811hs only)
 
 Currently supported hardware:
@@ -34,13 +34,11 @@ Currently supported platforms:
 Future plans:
 -------------
 
-- code cleanup
-	- separate platform specific code
-- more supported platforms
 - more functionalities
 	- RS232 via USB
 	- mass storage device (USB stick)
 	- Network (ethernet?) via USB
+- fix device driver side
 
 Content
 -------
@@ -56,6 +54,9 @@ Content
 	separated by host, device, and spi
 - hardware/
 	description of supported hardware
+	The actual hardware is described 
+	here http://www.6502.org/users/andre/csa/netusb/index.html 
+	and here http://www.6502.org/users/andre/csa/usb/index.html
 - platform/
 	hold the platform specific code.
 	Here reside the main programs with the build code
@@ -80,6 +81,7 @@ Known bugs
 - hub enumeration on MAX3421 does not yet work. 
 - keyboard mapping is preliminary
 - Only few features are implemented. E.g. there is no power management
+- Device driver only somewhat works
 
 Device quirks
 -------------
