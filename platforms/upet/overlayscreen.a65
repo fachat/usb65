@@ -1,0 +1,171 @@
+/*
+    (C) 2011-2023 Andre Fachat
+
+    This file is part of the 6502 USB Host Driver.
+
+    The 6502 USB Host Driver is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The 6502 USB Host Driver is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    Lesser GNU General Public License for more details.
+
+    You should have received a copy of the Lesser GNU General Public License
+    along with the 6502 USB Host Driver. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/*
+ * This code provides the overlay screen used in the USB TSR driver.
+ * It fills a couple of lines, then waits for a key being pressed.
+ *
+ * (C) 2011,2023 A. Fachat
+ */
+
+#define	XMAX	#9	; at $e3 for 80 cols, or $03eb for 40 cols - so use constant
+
+
+	.(
+
+#ifdef DEBUG
+DBGBASE		=$8028		; screen plus one line, so PETUSBKBD can use first line
+SCRBASE		=$8028		; screen plus one line, so PETUSBKBD can use first line
+#else
+SCRBASE		=$8000
+#endif
+
+	;----------------------------------------------------------------
+	; virtual screen to print to from driver
+	; print output is collected, and - if there is something - 
+	; recalled at the end of the poll, waiting for a key
+	; to clear the buffer
+tmpx	.byt 0
+tmpy	.byt 0
+tmpc	.byt 0
+
+line	.byt 0	; current line
+col	.byt 0	; current col
+;+SCREENCOL=col
+
+colp	.byt 0, 40, 80, 120, 160, 200
+
+LINES	=6	; 6 lines
+COLS	=40	; with 40 cols each (max below 256 bytes)
+SCRLEN	=LINES*COLS
+
+SCREEN	=SCRBASE
+
+&init_scr .(
+	jsr clrscr
+	rts
+	.)
+
+&log_printc .(
+	stx tmpx
+	sty tmpy
+	sta tmpc
+	cmp #$20
+	bcs printable
+	cmp #13
+	beq nextl
+printable
+	ldy line
+	lda colp,y
+	clc
+	adc col
+	tay
+	lda tmpc
+	and #$ff-$40	; to screen code
+	ora #$80	; invers
+	sta screenbuf,y
+nextc	inc col
+	lda col
+	cmp #COLS
+	bcc endprint
+nextl	lda #0
+	sta col
+	inc line
+	lda line
+	cmp #LINES
+	bcc endprint
+	jsr show
+endprint
+	ldx tmpx
+	ldy tmpy
+	lda tmpc
+	rts
+	.)
+
+clrscr 	.(
+	ldy #0
+	sty line
+	sty col
+	lda #$a0	; space, inverted
+	ldy #SCRLEN
+l	sta screenbuf-1,y
+	dey
+	bne l
+	rts
+	.)
+
+&scr_flush .(
+	lda col
+	ora line
+	beq noshow
+	jsr show
+noshow	rts
+	.)
+
+	; this routine swaps the screenbuf with the start of the actual screen
+	; then waits for a keypress
+show	.(
+	jsr swap
+	jsr waitkeypress
+	jsr swap
+	jsr clrscr
+	rts
+	.)
+
+waitkeypress .(
+	php
+	cli
+l	lda $9e
+	beq l
+	sei
+	jsr $e003	; does a CLI at the end
+	plp
+	rts
+	.)
+
+swap	.(
+	ldy #SCRLEN
+sl	ldx screenbuf-1,y
+	lda SCREEN-1,y
+	sta screenbuf-1,y
+	txa
+	sta SCREEN-1,y
+	dey
+	bne sl
+	rts
+	.)
+
+screenbuf .dsb SCRLEN
+
+#if 0
+waitloop
+	.(
+	ldx #0
+	ldy #0
+l	dex
+	bne l
+	dey
+	bne l
+	rts
+	.)
+#endif
+
+	.)
+
+

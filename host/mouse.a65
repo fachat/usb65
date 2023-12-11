@@ -24,20 +24,25 @@
 	.(
 	.data
 
+BUFLEN	= 8;
+
 poll_data
-        .byt 0                  ; endpoint number
-        .byt 0                  ; transparent poll function data
-        .word 0                 ; max packet length from EP descriptor
-        .word mouse_poll_cb       ; hub poll callback function
+        .byt 0		; endpoint number
+        .byt 0		; transparent poll function data
+maxplen	.word 0		; max packet length from EP descriptor
+        .word mouse_poll_cb 	; hub poll callback function
 
 get_data .byt 0, 0, 0, HOST_FLAG_IGNORE_NAK
-        .word 0         ; max endpoint packet size per tx (from EP descriptor)
-        .word 8  ; data stage transfer size (possibly multiple tx)
+        .word 0		; max endpoint packet size per tx (from EP descriptor)
+        .word BUFLEN  	; data stage transfer size (possibly multiple tx)
         .word kbdbuf
 
 	.bss
 
-kbdbuf	.dsb 8, 0 
+iface	.byt 0
+slot	.byt 0
+buffer  .dsb 8, 0
+kbdbuf	.dsb BUFLEN, 0 
 
 	.text
 
@@ -45,7 +50,14 @@ kbdbuf	.dsb 8, 0
 ; ptr must hold pointer to interface descriptor
 ; (endptr for usbgen_next_desc must hold end of descriptor set)
 &mouse_register_interface .(
+	sta poll_data + HOST_POLL_DATA
+	stx iface
+
 	DENTER("MOUSE_REGISTER_IFC")
+
+	ldy #MSG_HID_MOUSE
+	jsr print
+
 nextdesc
 	jsr usbgen_next_desc
 	bcs exit
@@ -66,6 +78,7 @@ nextdesc
 	ldy #DESC_EP_MAX_PACKET_SIZE
 	lda (ptr),y
 	sta poll_data + HOST_POLL_MAXPKLEN
+	tax
 	iny
 	lda (ptr),y
 	sta poll_data + HOST_POLL_MAXPKLEN+1
@@ -78,6 +91,35 @@ nextdesc
 	lda #<poll_data
 	ldy #>poll_data
 	jsr usb_register_poll_cb
+	sta slot
+
+	; SetProtocol 
+	tax
+	ldy iface
+	jsr usb_hid_set_protocol
+
+	; SetIdle
+	ldx slot
+	ldy iface
+	lda #USB_HID_BOOT_PROTOCOL
+	jsr usb_hid_set_idle
+
+	; some devices, notably my Lenovo mouse, have a maxpklen of less than 8
+	; this must be set as limit to the buflen, otherwise
+	; some drivers (notably max3421) would try to continue loadin
+	; invalid(?) data.
+	.assert BUFLEN >> 8 == 0, "buflen must be less than a page"
+	lda #<BUFLEN
+	sta get_data + HOST_CTRL_BUFLEN
+	lda #>BUFLEN
+	sta get_data + HOST_CTRL_BUFLEN + 1
+	lda maxplen + 1
+	bne nolimit
+	lda maxplen
+	cmp #<BUFLEN
+	bcs nolimit
+	sta get_data+ HOST_CTRL_BUFLEN
+nolimit
 
 	pla
 	sta ptr+1
@@ -107,9 +149,18 @@ std_poll
 	cmp #3		; buttons, x-displacement, y-displacement
 	bcc no_process
 
-	lda kbdbuf	; buttons
+#if 0
+	ldy #5
+l0	lda kbdbuf,y
+	sta $8000+80-6,y
+	dey
+	bpl l0 
+#endif
+	lda kbdbuf+0	; buttons
 	ldx kbdbuf+1	; x-displ.
 	ldy kbdbuf+2	; y-displ.
+			; some mice have kbdbuf+3 as scrollwheel
+
 	; callback to main code when we got mouse data
 	jsr usb_mouse_rx_cb
 no_process

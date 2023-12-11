@@ -21,6 +21,8 @@
  * generic USB functionality
  */
 
+;#define	DEBUG
+
 	.data
 
 ; pointer to the end of the config descriptor, set
@@ -50,13 +52,13 @@ gotconf
 #ifdef DEBUG
         jsr print_hex_buffer
 	lda #13
-	jsr printc
+	jsr log_printc
 	lda ptr+1
 	jsr hexout
 	lda ptr
 	jsr hexout
 	lda #" "
-	jsr printc
+	jsr log_printc
 #endif
         ldy #DESC_CFG_TYPE
         lda (ptr),y
@@ -70,20 +72,10 @@ gotconf
 	clc
 	adc ptr
 	sta endptr
-#ifdef DEBUG
-	php
-	jsr hexout
-	plp
-#endif
 	iny
 	lda (ptr),y
 	adc ptr+1
 	sta endptr+1
-#ifdef DEBUG
-	jsr hexout
-	lda #13
-	jsr printc
-#endif
 
 	pla
 	tax			; control slot for usb_setconf below

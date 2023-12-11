@@ -22,7 +22,7 @@
  * single keyboard only!
  */
 
-#define	DEBUG_KBD
+;#define	DEBUG_KBD
 
 	.(
 
@@ -32,7 +32,7 @@ poll_data
         .byt 0                  ; endpoint number
         .byt 0                  ; transparent poll function data
         .word 0                 ; max packet length from EP descriptor
-        .word kbd_poll_cb       ; hub poll callback function
+        .word kbd_poll_cb       ; poll callback function
 
 get_data .byt 0, 0, 0, HOST_FLAG_IGNORE_NAK
         .word 0         ; max endpoint packet size per tx (from EP descriptor)
@@ -42,16 +42,19 @@ get_data .byt 0, 0, 0, HOST_FLAG_IGNORE_NAK
 send_led .byt 0, 0, 0, 0
         .word 0         ; max endpoint packet size per tx (from EP descriptor)
         .word 1  	; data stage transfer size (possibly multiple tx)
-        .word kbdbuf
+        .word ledbuf
 	.byt $21
 	.byt $09	; SET_REPORT
 	.byt 0, 2	; report type (2=output) and id (none=0)
 	.word 0		; interface
 	.word 1		; report length
+ledbuf	.byt 0
 
 	.bss
 
+iface	.byt 0
 kbdbuf	.dsb 8, 0 
+lastkeys .dsb 6,0
 
 ; send the modifiers as LED state
 prevmod	.byt 0		; previous state of the modifiers
@@ -69,12 +72,20 @@ prevcnt	.byt 0		; how many times did we have this value?
 ; (endptr for usbgen_next_desc must hold end of descriptor set)
 &kbd_register_interface .(
 	sta poll_data + HOST_POLL_DATA
+	stx iface
+
+	jsr clrkloop
+
 	DENTER("KBD_REGISTER_IFC")
+
+	ldy #MSG_HID_KEYBOARD
+	jsr print
+
 	lda #0
 	sta prevkey
 	sta prevmod
-	ldy #DESC_IFC_NUM
-	lda (ptr),y
+
+	lda iface
 	sta send_led + HOST_CTRL_SETUP + 4
 nextdesc
 	jsr usbgen_next_desc
@@ -108,6 +119,16 @@ nextdesc
 	lda #<poll_data
 	ldy #>poll_data
 	jsr usb_register_poll_cb
+	sta slot
+
+	ldx slot
+	ldy iface
+	jsr usb_hid_set_idle
+
+	ldx slot
+	ldy iface
+	lda #USB_HID_BOOT_PROTOCOL
+	jsr usb_hid_set_protocol
 
 	pla
 	sta ptr+1
@@ -118,6 +139,7 @@ nextdesc
 	lda #HOST_REGISTER_CTRL_USED	; do not close control slot
 
 exit	DEXIT("KBD_REGISTER_IFC")
+
 	rts
 	.)
 
@@ -141,7 +163,7 @@ std_poll
 	; compute modifiers
 #ifdef DEBUG_KBD
 	lda #"K"
-	jsr printc
+	jsr log_printc
 	lda kbdbuf
 	jsr hexout
 #endif
@@ -157,51 +179,66 @@ std_poll
 	beq nomod
 	jsr send_mod
 nomod
-	tax
-	; only check first character in response (for simplicity)
-	lda kbdbuf+2
-	beq no_process
-	jsr translate
-	bcs no_data
-	cmp prevkey
-	bne no_bounce
-	ldy prevcnt		; same as previous key
-	beq debounced		; count already down to zero, then accept it (key repeat)
-	dec prevcnt		; no, just dec debounce counter
-	clc
-	rts
-no_bounce
-	ldy #BOUNCE_CNT		; debounce for next poll
-	sty prevcnt
-	sta prevkey
-debounced
+	ldx #0
+keyloop	stx kbdbuf+1	; counter in unused packet field
+	lda kbdbuf+2,x
+	beq endkloop
+	ldx #0
+kl1	cmp lastkeys,x
+	beq nextkey	; key is in old list - so skip
+	inx
+	cpx #6
+	bcc kl1
 
-	; callback to main code when we got a key	
-	jsr usb_kbd_rx_key_cb
-	clc
-	rts
-no_data
-	lda prevcnt
-	beq clr
-	dec prevcnt
-	clc
-	DEXIT("KBD POLL Y")
-	rts
-clr
-	lda #0
-	sta prevkey
-	DDEBUG(ldy prevcnt)
-	DEXIT("KBD POLL X")
+	; key is not in old list - so newly pressed
+	jsr sendkey	; send it to callback
+
+	; check next entry in key list
+nextkey	ldx kbdbuf+1
+	inx
+	cpx #6
+	bcc keyloop
+
+	; all key entries checked - copy current to lastkeys
+endkloop
+	ldx #5
+kl2	lda kbdbuf+2,x
+	sta lastkeys,x
+	dex
+	bpl kl2
+
 no_process
 	clc
 	rts
+
+clrkloop
+	ldx #5
+	lda #0
+kl3	sta lastkeys,x
+	dex
+	bpl kl3
+	clc
+	rts
+	
+sendkey	.(
+	ldx prevmod	; modifier (with combined l/r bits)
+	jsr translate
+	bcs no_data
+	; callback to main code when we got a key	
+	ldx kbdbuf	; modifier (with different left/right bits)
+	jsr usb_kbd_rx_key_cb
+no_data	rts
+	.)
+
 	.)
 
 ; send the modifiers as report to the keyboard, to toggle the LEDs,
 ; just for demonstration, as we don't currently handle NUMLOCK or CAPSLOCK yet
 send_mod .(
 	sta prevmod
-	sta kbdbuf	; report data
+	sta ledbuf	; report data
+	lda iface
+	sta send_led+USB_SETUP_INDEX
 	ldx kcslot
 #ifdef DEBUG_KBD
 	DMSG("SEND_MOD")
@@ -216,6 +253,18 @@ send_mod .(
 ; translate the keycode from the keyboard to the 
 ; PETSCII code
 translate .(
+#if 0
+	.data
+scridx	.byt 0
+	.text
+	ldy scridx
+	sta $8000,y
+	iny
+	cpy #32
+	bcc n
+	ldy #0
+n	sty scridx
+#endif
 	DMSG("TRANSLATE")
 	ldy #<kbd_table
 	sty ptr
@@ -225,11 +274,11 @@ translate .(
 tloop	cmp (ptr),y
 	beq gotit
 	pha
-	lda #4
-	clc
-	adc ptr
-	sta ptr
-	bcc noc
+	iny
+	iny
+	iny
+	iny
+	bne noc
 	inc ptr+1
 noc	lda (ptr),y
 	beq end		; end of table reached
@@ -238,19 +287,25 @@ noc	lda (ptr),y
 end	pla
 no_key	sec
 	rts
+
 gotit	txa	; ctrl=1, shift=2, alt=4
 	beq no_mod
 	lsr
 	bcs ctrl
 	lsr
 	bcc no_mod
-	ldy #2	; shift
+	iny 	; shift, y+=2
 	.byt $2c
-ctrl	ldy #3	; ctrl
-	.byt $2c
-no_mod	ldy #1
+ctrl	iny 	; ctrl, y+=3
+	iny
+no_mod	iny	; no mod, y+=1
 	lda (ptr),y
 	beq no_key
+#if 0
+	ldy scridx
+	sta $8000,y
+	inc scridx
+#endif
 	clc
 	rts
 	.)
@@ -291,7 +346,7 @@ kbd_table
 	.byt $20, "3", "#", 0		; 4
 	.byt $21, "4", "$", 0		; 5
 	.byt $22, "5", "%", 0		; 6
-	.byt $23, "6", "^^", 0		; 7 (note: ^ is an escape char in xa65)
+	.byt $23, "6", "^", 0		; 7 
 	.byt $24, "7", "&", 0		; 8
 	.byt $25, "8", "*", 0		; 9
 	.byt $26, "9", "(", 0		; 0
@@ -306,10 +361,10 @@ kbd_table
 	.byt $2f, "[", $7b, 0		; [ (US) ü (DE)
 	.byt $30, "]", $7d, 0		; ] (US) + (DE)
 
-	.byt $32, "\", $7c, 0		; \ (US) # (DE)
+	.byt $32, "\\", $7c, 0		; \ (US) # (DE)
 	.byt $33, ";", ":", 0		; ; (US) ö (DE)
 	.byt $34, "'", 34, 0		; ' (US) ä (DE)
-	.byt $35, "`", "^^", 0		; ` (US) ^ (DE) (Note: ^ is escape character in xa65)
+	.byt $35, "`", "^", 0		; ` (US) ^ (DE)
 	.byt $36, ",", "<", 0		; ,
 	.byt $37, ".", ">", 0		; .
 	.byt $38, "/", "?", 0		; / (US) - (DE)

@@ -1,0 +1,70 @@
+
+/*
+ * this file installs the usbrom driver in bank 7 and patches the BASIC 4 ROM
+ * to include the ROM usb companion functions.
+ *
+ * Therefore, at the end of this file, a page of companion code is expected that is
+ * installed into $dfxx in BASIC ROM.
+ * After that, up to 16k of USB driver code and data are expected, that are copied
+ * to $1000 in bank 7 (where the USB driver code resides)
+ */
+
+	.word $0401
+	*=$0401
+
+	.word eol		; BASIC link pointer
+	.word 10		; line number
+	.byt $9e, "1040", 0	; BASIC code (tokenized)
+eol	.word 0			; BASIC link pointer, 0 means end of code
+	.dsb 1040-*
+
+	; start after sys
+	
+	; make ROM writable
+	lda #%01100000
+	sta $e801
+
+	; copy petromcomp over ROM at page $dfxx
+	ldy #0
+pc1	lda petrom,y
+	sta $df00,y
+	iny
+	cpy #usbrom - petrom
+	bne pc1
+
+	; write-protect ROM again
+	lda #%11100000
+	sta $e801	
+
+	sei
+
+	; native mode
+	clc
+	xce
+	; 16bit index registers
+	rep #%00010000
+	.xl
+
+	ldx #0
+pc2	lda usbrom,x
+	sta $071000,x
+	inx
+	cpx #end - usbrom
+	bne pc2
+
+	; 8bit index registers
+	sep #%00010000
+	.xs
+	; emulation mode
+	sec
+	xce
+
+	cli
+
+	rts
+	
+petrom
+	.bin 0,0, "petromcomp"
+usbrom
+	.bin 0,0, "usbrom"
+end

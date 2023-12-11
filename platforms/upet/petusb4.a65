@@ -1,0 +1,285 @@
+/*
+    (C) 2011 Andre Fachat
+
+    This file is part of the 6502 USB Host Driver.
+
+    The 6502 USB Host Driver is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The 6502 USB Host Driver is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    Lesser GNU General Public License for more details.
+
+    You should have received a copy of the Lesser GNU General Public License
+    along with the 6502 USB Host Driver. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+#define	DEBUG
+#undef	DEBUG_POLL
+#define	DEBUG_HW
+	
+/* globals */
+
+log_printc=$ffd2
+
+
+	.(
+
+#include "hostmsg.i65"
+
+	.word $0401
+ldaddr
+	.word eol
+	.word 10
+	.byt $9e, "1040"
+	.byt 0
+eol	.word 0
+	.dsb 1040-ldaddr-(*-ldaddr), $00
+	jmp start
+
+	.)
+	.(
+
+	.data
+irqvec  =$90
+
+	.align 2
+irqsave .word 0
+	.text
+
+	.zero
+; print routine pointer
+&ZPRINTPTR	.word 0		;=$1f
+; device driver pointer
+ZUDEVPTR1	.word 0		;=$1f
+; general pointer within USB code
+&ptr		.word 0		;=$11
+; debug code pointer (to save inline string address)
+&dbg_ptr		.word 0		;=$b1
+
+	.text
+
+/* current screen column for debug, so we can enter cr when appropriate */
+&SCREENCOL	=$c6
+
+iniirq  .(
+        lda irqvec
+        sta irqsave
+        lda irqvec+1
+        sta irqsave+1
+
+        ;lda #0
+        ;sta irqmode
+
+        sei
+        lda #<newirq
+        sta irqvec
+        lda #>newirq
+        sta irqvec+1
+
+	lda #$3c
+	sta $e813	; disable normal interrupt source (VDRIVE)
+	
+	lda #<10000
+	sta $e840+4	; T1 low
+	lda #>10000
+	sta $e840+5	; T1 high
+	lda #%01000000	; continous timed interrupts T1
+	sta $e840+11	; ACL
+	lda #%11000000
+	sta $e840+14	; IER
+
+        cli
+        rts
+        .)
+
+freirq  .(
+        sei
+        lda irqsave
+        sta irqvec
+        lda irqsave+1
+        sta irqvec+1
+        cli
+        rts
+        .)
+
+
+newirq  .(
+;        lda irqmode
+;        bne noloop
+;        jsr DLOOP
+noloop  ;jmp (irqsave)
+
+	lda $e840+4	; read T1 low to clear interrupt
+
+        ; the PET sets the MTR line on the tape, no matter what,
+        ; esp. with the SENSE line.
+        ; So we need to emulate the original IRQ routine up to the 
+        ; point behind that MTR code
+
+        jsr $f768       ; update jiffy
+        ; cursor handling
+        lda $a7
+        bne e474        ; $d0 $18
+        dec $a8
+        bne e474        ; $d0 $14
+        lda #$14
+        sta $a8
+        ldy $c6
+        lsr $aa
+        lda ($c4),y
+        bcs e476        ; $b0 $04
+        inc $aa
+        sta $a9
+e476
+        eor #$80
+        sta ($c4),y
+e474
+        ; ???
+        ldx #$ff
+        stx $a6
+        inx
+        stx $98
+        ldx #$50
+;e47d
+        lda $e810
+        and #$f0
+        sta $e810
+;e485
+        ; MTR handling removed
+;e4b5
+        ; keyboard read
+        jmp $e4b5
+
+
+        .)
+
+start	.(
+	jsr setup_io
+
+	jsr iniirq
+
+	lda #14
+	jsr log_printc		; lower/upper case mode
+
+	ldy #MSG_COPYRIGHT
+	jsr print
+
+	jsr usb_init
+	bcc hwfound
+	tay			; error number
+	jsr print
+	rts
+hwfound
+	jsr prversion
+
+	;da #0
+	;sta $a7			; crude method to enable cursor flash
+poll
+	jsr usb_polldev
+	bcs error
+	lda #1
+	jsr pause
+	; no device attached, so just wait until RUN/STOP
+	jsr $f335	
+	bne poll
+	beq end
+error
+	ldy #ERR_DEVICE
+	jsr printx
+end
+	jsr freirq
+	rts	
+	.)
+
+&waitkey .(
+	ldy #MSG_WAIT_KEY
+	jsr print
+l	jsr $f335	; wait for STOP key
+	bne l
+	rts
+	.)
+
+prversion .(
+	tax
+	bne v15
+	ldy #MSG_V12
+	.byt $2c
+v15	ldy #MSG_V15
+	jmp print
+	.)
+
+VCOUNT=$99
+
+; pause a given number of vertical screen retraces (1/50th seconds)
+; in AC has number of frames (retraces)
+&pause   .(
+	tax
+	inx           ; full retraces, so one more border between traces
+p0	lda VCOUNT
+p1	cmp VCOUNT
+	beq p1
+	dex
+	bne p0
+	rts
+	.)
+
+; callback from the keyboard code
+; ac contains key from keyboard (in PETSCII)
+&usb_kbd_rx_key_cb .(
+	inc $a7
+	jsr log_printc
+	dec $a7
+	rts
+	.)
+	
+
+; callback from the mouse code
+; ac contains buttons
+; x/y contain x resp. y displacement
+&usb_mouse_rx_cb .(
+	inc $a7
+
+	and #$07
+	beq nom
+	pha 
+	lda #"M"
+	jsr log_printc
+	pla
+	jsr hexout
+nom	
+	txa
+	beq nox
+	bmi left
+right	lda #$1d
+	jsr log_printc
+	dex
+	bne right
+	beq nox
+left	lda #$9d
+	jsr log_printc
+	inx
+	bne left
+nox
+	tya
+	beq noy
+	bmi up
+down	lda #$11
+	jsr log_printc
+	dey
+	bne down
+	beq noy
+up	lda #$91
+	jsr log_printc
+	iny
+	bne up
+noy
+	dec $a7
+	rts
+	.)
+
+	.)
+

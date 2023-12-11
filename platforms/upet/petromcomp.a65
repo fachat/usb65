@@ -1,0 +1,295 @@
+/*
+    (C) 2011-2013 Andre Fachat
+
+    This file is part of the 6502 USB Host Driver.
+
+    The 6502 USB Host Driver is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The 6502 USB Host Driver is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    Lesser GNU General Public License for more details.
+
+    You should have received a copy of the Lesser GNU General Public License
+    along with the 6502 USB Host Driver. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/*
+ * This code is patched into the BASIC4/KERNAL ROM to provide the necessary interface
+ * for the USB host driver running in a separate memory bank
+ *
+ * Any install routine should run usb_init here, and check C afterwards.
+ * If c=0 then hardware is found and usb_install can be called to patch
+ * in the new interrupt routine.
+ */
+
+#undef	DEBUG
+#undef	DEBUG_POLL
+#undef	DEBUG_HW
+
+	.(
+	.text
+
+USBBLK	=14			; USB code is running in bank 7
+VBLOCK	=2			; video block in video bank (bank 8)
+
+MAP_USB	=USBBLK + (VBLOCK << 4)
+MAP_BAS	=0 + (VBLOCK << 4)
+MAPREG	=$e802
+
+USBBASE	=$1000			; load address of USB driver in bank 7
+
+driver_init 	=USBBASE
+driver_poll	=USBBASE+3
+
+lock	=$0700ff		; last byte in zeropage in bank 7
+tmpx	=$0700fe		; 
+;lock	=$033c
+;tmpx	=$033d
+	
+IRQV	=$90			; PET interrupt vector
+
+; called from outside
+&usb_init	jmp init	; init the USB stack
+&usb_inst	jmp install	; patch in USB interrupt into ROM
+&usb_uninst	jmp uninstall	; remove USB patch
+; called from USB driver interrupt routine
+&usb_pause	jmp pause	; 
+&usb_appendkey	jmp printc2
+; internal
+&usb_irq	jmp newirq
+
+;------------------------------------------------
+
+install	.(
+	lda #0
+	sta $e801	; make memory writable
+
+	php
+	sei
+	lda #$4c	; JMP
+	sta $e452	; the original JMP ($0090)
+	lda #<newirq
+	sta $e453
+	lda #>newirq
+	sta $e454
+
+	lda #%11100000
+	sta $e801	; protect memory $a-fxxx
+
+	lda #0
+	sta lock
+	plp
+	rts
+	.)
+
+uninstall .(
+	lda #0
+	sta $e801	; make memory writable
+
+	php
+	sei
+	lda #$6c	; JMP
+	sta $e452	; the original JMP ($0090)
+	lda #<IRQV
+	sta $e453
+	lda #>IRQV
+	sta $e454
+
+	lda #%11100000
+	sta $e801	; protect memory $a-fxxx
+	plp
+	rts
+	.)
+
+	.(
+	;-------------------------------
+	; init the driver in USB bank and check for hardware
+	; if returns with C=0, we can install interrupt handler
+
+&init	ldx #MAP_USB
+	stx MAPREG
+
+	php
+	sei
+
+	lda #<-1
+	sta lock
+
+	jsr driver_init
+
+	ldx #MAP_BAS
+	stx MAPREG
+
+	bcs locked
+	plp
+	clc
+	jmp install
+	.byt $2c
+locked 	plp
+	sec
+	rts
+	.)
+
+	.(	
+	;-------------------------------
+	; new interrupt routine
+&newirq
+	; The first part is such a BAD HACK(tm)
+	;
+	; After IEC load, the kernal calls F92B, assumingly to check
+	; the RUN/STOP key a last time. But starting from F92E it checks
+	; whether the interrupt vector is set to page $E4xx - and if not,
+	; just loops! One way around this is the following
+	; BAD HACK:
+	; in the interrupt routine, we check whether we have interrupted the
+	; code in just this place, and then forward the RTI address on the
+	; stack such that the check is ignored.
+	; However, it seems there are conditions where this still did not 
+	; trigger. My assumption is that the number of cycles for a screen
+	; (interrupt) is similar to when checking the STOP key in the loop
+	; So, instead, we re-purpose the BRK vector jump, which is at 
+	; $E44F and use the BRK code instead
+	; 
+	tsx
+
+	;-------------------------------
+	; debug output
+#ifdef DEBUG
+lda $0105,x
+sta $8000
+lda $0106,x
+sta $8001
+lda lock
+sta $8002
+	inc DBGBASE+0
+	lda $96		; kernel status
+	sta DBGBASE+1
+	lda lock
+	sta DBGBASE+2
+	lda $e840
+	sta DBGBASE+5
+#endif
+	;-------------------------------
+	; protect IEEE488 
+	lda $e840
+	and #$c1	; NRFDin, NDACin, DAVin
+	cmp #$c1	; active? then do not poll, as we might interfere with IEEE488 timing
+	bne nopoll
+
+	lda $0106,x	; protect all interrupts in $f0xx-$f1xx
+	and #$f0
+	cmp #$f0
+	beq nopoll
+	
+	;-------------------------------
+	; check soft lock
+	; no race condition, we can safely assume to not be interrupted (on single-cpu)
+
+	lda lock
+	bmi nopoll
+
+	;-------------------------------
+	; poll the USB bus
+poll
+
+#ifdef DEBUG
+	tsx
+	lda $0105,x
+	sta DBGBASE+3
+	lda $0106,x
+	sta DBGBASE+4
+#endif
+
+	lda lock	; lock so we don't get into poll again for now; results in $ff
+	dec
+	sta lock
+
+	lda #MAP_USB
+	sta MAPREG
+
+	jsr driver_poll
+
+	lda #MAP_BAS
+	sta MAPREG
+
+	lda lock
+	inc
+	sta lock
+nopoll
+	; do we need this?
+	tsx
+	lda $0101,x
+	tay
+	lda #0
+
+	; return to original IRQ
+	jmp ($0090)	
+	.)
+
+	;----------------------------------------------------------------
+	; those callbacks are being called from the driver, i.e. 
+	; actually from within somewhere in the code. We need
+	; to protect the output
+
+
+VCOUNT=$99
+
+; pause a given number of vertical screen retraces (1/50th seconds)
+; in AC has number of frames (retraces)
+pause   .(
+	php
+
+	ldx #MAP_BAS
+	stx MAPREG
+
+	cli
+	tax
+	inx           ; full retraces, so one more border between traces
+p0	lda VCOUNT
+p1	cmp VCOUNT
+	beq p1
+	dex
+	bne p0
+
+	sei
+	ldx #MAP_USB
+	stx MAPREG
+
+	plp
+	rts
+	.)
+
+
+	;----------------------------------------------------------------
+
+#define XMAX    #9      ; at $e3 for 80 cols, or $03eb for 40 cols - so use constant 
+
+printc2 .(
+	; write a char into the key buffer (if not filled already)
+	php
+	sei
+	phx
+	
+	ldx #MAP_BAS
+	stx MAPREG
+
+	ldx $9e
+	cpx XMAX
+	bcs full
+	sta $026f,x
+	inc $9e
+full 	
+	ldx #MAP_USB
+	stx MAPREG
+
+	plx
+	plp
+	rts
+	.)
+
+	.)
+

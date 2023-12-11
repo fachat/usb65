@@ -52,11 +52,11 @@ tmp	.byt 0
 	adc #6
 	jsr hexout
 	lda #":"
-	jsr printc
+	jsr log_printc
 
 	ldy #8
 l	lda #" "
-	jsr printc
+	jsr log_printc
 	lda $0107,x
 	jsr hexout
 	inx
@@ -64,7 +64,7 @@ l	lda #" "
 	bne l
 
 	lda #13
-	jsr printc
+	jsr log_printc
 
 	pla
 	tax
@@ -134,11 +134,11 @@ l	lda #" "
 	.)
 
 prc	.(
-	lda SCREENCOL
-	beq nocr
+	;lda SCREENCOL
+	;beq nocr
 	lda #13
-	jsr printc
-nocr	rts
+	jmp log_printc
+;nocr	rts
 	.)
 
 &dbg_exit .(
@@ -188,7 +188,7 @@ print_regs .(
 	ldy #0
 l	lda (dbg_ptr),y
 	beq end
-	jsr printc
+	jsr log_printc
 	iny
 	bne l
 end	tya
@@ -216,7 +216,7 @@ end	tya
 	jsr hexout
 
 	lda #" "
-	jsr printc
+	jsr log_printc
 	lda $0104,x	; sr
 	sta tmp
 
@@ -224,49 +224,49 @@ end	tya
 	asl tmp
 	bcs f_neg
 	lda #"-"
-f_neg	jsr printc
+f_neg	jsr log_printc
 
 	lda #"V"
 	asl tmp
 	bcs f_ov
 	lda #"-"
-f_ov	jsr printc
+f_ov	jsr log_printc
 
 	lda #"1"
 	asl tmp
 	bcs f_one
 	lda #"-"
-f_one	jsr printc
+f_one	jsr log_printc
 
 	lda #"B"
 	asl tmp
 	bcs f_brk
 	lda #"-"
-f_brk	jsr printc
+f_brk	jsr log_printc
 
 	lda #"D"
 	asl tmp
 	bcs f_dec
 	lda #"-"
-f_dec	jsr printc
+f_dec	jsr log_printc
 
 	lda #"I"
 	asl tmp
 	bcs f_int
 	lda #"-"
-f_int	jsr printc
+f_int	jsr log_printc
 
 	lda #"Z"
 	asl tmp
 	bcs f_zero
 	lda #"-"
-f_zero	jsr printc
+f_zero	jsr log_printc
 
 	lda #"C"
 	asl tmp
 	bcs f_carry
 	lda #"-"
-f_carry	jsr printc
+f_carry	jsr log_printc
 	rts
 	.)
 

@@ -17,6 +17,9 @@
     along with the 6502 USB Host Driver. If not, see <http://www.gnu.org/licenses/>.
 */
 
+;#define DEBUG
+;#define DEBUG_POLL
+
 /*
  * device-independent USB functionality
  * i.e. independent from the USB host hardware
@@ -71,7 +74,19 @@
  *	xr has slot number. FNADDR, ENDPOINT, dev speed is replaced with stored data from slot
  *	returns clc on ok, with AC number of bytes tx'd
  *	returns sec on error, with AC error code
- */
+ *
+ * usb_control 
+ *	Send a control msg, possibly receive some data (depends on control)
+ *	in: a/y contains pointer to HOST_CTRL structure,
+ *	FNADDR, ENDPOINT, SPEED, MAXPKLEN, BUFLEN, <buffer, >buffer.
+ *	x must have the slot number
+ *	FNADDR, ENDPOINT, SPEED, MAXPKLEN are set by usb_prepare_ctrl
+ * usb_register_poll_cb
+ *	register a poll callback
+ *	a/y hold the address of a HOST_POLL_* struct
+ *	curslot holds the current device from usb_init_device
+ *	return new slow number for the registered endpoint in AC
+,,*/
 
  /*
  * usb host interface that is used here:
@@ -109,57 +124,31 @@
  *      on error, AC has error condition
  */
 
-#ifdef SL811_HOST
-#define	usb_host_init		sl811h_init
-#define	usb_host_polldev	sl811h_polldev
-#define	usb_host_devinit	sl811h_devinit
-#define	usb_host_reset		sl811h_reset
-#define	usb_host_control	sl811h_control
-#define	usb_host_get		sl811h_get
-#endif
-
-
-#ifdef MAX3421_HOST
-#define	usb_host_init		max3421_init
-#define	usb_host_polldev	max3421_polldev
-#define	usb_host_devinit	max3421_devinit
-#define	usb_host_reset		max3421_reset
-#define	usb_host_control	max3421_control
-#define	usb_host_get		max3421_get
-#endif
-
 	.(
 
-#define	MAX_PACKET	$f0
 
-#ifdef SL811_HOST
-#define SL811_HOST      $ec98
-#include "sl811_host.a65"
-#endif
+MAX_PACKET	=$f0
 
-#ifdef MAX3421_HOST
+/******************************************************/
 
-#ifdef SPI65_SPI
-#include "spi65b.i65"
-#include "spi65b.a65"
-#endif
-#ifdef CBMSPI_SPI
-#include "cbmspi.i65"
-#include "cbmusb_pet.a65"
-#endif
-#ifdef UPET_SPI
-#include "upetspi.i65"
-#include "upetspi.a65"
-#endif
 
-#include "max3421e.a65"
-#endif
+#include "debug.a65"
+#include "usb.i65"
+#include "hostmsg.i65"
+
+
+
+	.zero
+;ptr	.word 0
+	.text
 
 #include "hub.a65"
 #include "usbgen.a65"
+#include "hid.a65"
 #include "kbd.a65"
 #include "mouse.a65"
 #include "detect.a65"
+
 
 
 &usb_register_hub_device = hub_register_device
@@ -207,6 +196,7 @@ getconf	.byt 0, 0, 0, 0
 
 state 	.byt 0		; master state (80=hw found, +40=root device found)
 
+	.align 2	; if we're running NMOS, avoid JMP ($xxFF) bug
 tptr	.word 0		; temporary var
 
 
@@ -231,16 +221,16 @@ tptr	.word 0		; temporary var
 
 curslot .byt 0		; current index in device table
 
-devnum	.dsb MAX_DEV	; valid device numbers, >127 is unused
-devdata	.dsb MAX_DEV	; transparent data given at device register, given back at poll
-devspeed .dsb MAX_DEV	; speed for device
-devendpt .dsb MAX_DEV	; speed for device
-devparent .dsb MAX_DEV	; parent device number (<0 for root device)
-devplenl .dsb MAX_DEV	; low byte of maximum packet length for device
-devplenh .dsb MAX_DEV	; high byte of maximum packet length for device
-devptrl	.dsb MAX_DEV	; low byte of poll address 
-devptrh	.dsb MAX_DEV	; high byte of poll address
-devtog .dsb MAX_DEV	; current toggle value (from CTRL_FLAGS)
+devnum		.dsb MAX_DEV	; valid device numbers, >127 is unused
+devdata		.dsb MAX_DEV	; transparent data given at device register, given back at poll
+devspeed 	.dsb MAX_DEV	; speed for device
+devendpt 	.dsb MAX_DEV	; speed for device
+devparent 	.dsb MAX_DEV	; parent device number (<0 for root device)
+devplenl 	.dsb MAX_DEV	; low byte of maximum packet length for device
+devplenh 	.dsb MAX_DEV	; high byte of maximum packet length for device
+devptrl		.dsb MAX_DEV	; low byte of poll address 
+devptrh		.dsb MAX_DEV	; high byte of poll address
+devtog 		.dsb MAX_DEV	; current toggle value (from CTRL_FLAGS)
 
 ;-----------------------------------------------------------
 ; initialization
@@ -261,6 +251,7 @@ i1	sta devnum,y	; illegal device num
 
 	jsr hub_init	; init hub structures
 
+	DEXIT("USB_HOST INIT")
 	jsr usb_host_init	; init hardware
 	bcs err
 	lda #$80
@@ -269,6 +260,7 @@ i1	sta devnum,y	; illegal device num
 err	lda #$00
 	sta state
 	lda #ERR_NO_HW
+	DEXIT("USB_INIT")
 	rts
 	.)
 
@@ -358,7 +350,7 @@ dnext	inc curslot
 	cpy #MAX_DEV
 	bne dl
 	jmp usb_init
-jmpl	jmp (ptr)
+;jmpl	jmp (ptr)
 	.)
 
 polldevices .(
@@ -390,6 +382,7 @@ p0	stx curslot
 	DMSG("RET DEV")
 #endif
 	bcc next
+
 	; error handling
 	tay		; error
 	pla		; saved state = curslot
@@ -606,7 +599,7 @@ gotres
 	ldy curslot		; temporary slot number
 #ifdef DEBUG
 	lda #"?"
-	jsr printc
+	jsr log_printc
 	tya
 	jsr hexout
 	txa
@@ -678,6 +671,7 @@ gotdesc	ldx #<buffer
 ; converts the slot number in ac into fnaddr (back in ac)
 ; preserves xr, destroys yr
 ; must preserve carry!
+; called from hub
 &usb_get_fnaddr .(
 	tay
 	lda devnum,y
@@ -688,10 +682,10 @@ gotdesc	ldx #<buffer
 ; in: address of control struct given in a/y
 ; in: x holds slot number
 ; uses ptr/ptr+1
-&usb_prepare_ctrl .(
+usb_prepare_ctrl .(
 	sta ptr
 	sty ptr+1
-	stx curslot
+	;stx curslot
 
 	ldy #HOST_CTRL_FNADDR
 	lda devnum,x
@@ -723,7 +717,7 @@ gotdesc	ldx #<buffer
 	.)
 
 ; de-prepare the control data
-&usb_deprep_ctrl .(
+usb_deprep_ctrl .(
 	php
 	pha
 	ldx curslot
@@ -809,7 +803,7 @@ ok 	clc
 ; speed is set here, endpoint is zero anyway and packet length
 ; is irrelevant as we don't have a data stage
 dosetaddr .(
-	sta setaddr + HOST_CTRL_SETUP + 2
+	sta setaddr + HOST_CTRL_SETUP + USB_SETUP_VALUE
 	lda devspeed,y
 	sta setaddr + HOST_CTRL_SPEED
 	lda #<setaddr
@@ -820,8 +814,9 @@ dosetaddr .(
 ; get some data. a/y contains pointer to HOST_CTRL structure,
 ; FNADDR, ENDPOINT, SPEED, MAXPKLEN, BUFLEN, <buffer, >buffer.
 ; x must have the slot number
-; FNADDR, ENDPOINT, SPEED, MAXPKLEN are set by usb_prepare_ctrl
+; FNADDR, ENDPOINT, SPEED, MAXPKLEN are set by usb_prepare_ctrl from slot
 &usb_get .(
+	stx curslot		; for de-prep
 	jsr usb_prepare_ctrl
 	jsr usb_host_get
 	jmp usb_deprep_ctrl
@@ -829,9 +824,10 @@ dosetaddr .(
 
 ; Send a control msg, possibly receive some data (depends on control)
 ; in: a/y contains pointer to HOST_CTRL structure,
-; FNADDR, ENDPOINT, SPEED, MAXPKLEN, BUFLEN, <buffer, >buffer.
+; FNADDR, ENDPOINT, SPEED, MAXPKLEN, BUFLEN, <buffer, >buffer, 8 byte setup packet
 ; x must have the slot number
 ; FNADDR, ENDPOINT, SPEED, MAXPKLEN are set by usb_prepare_ctrl
+; sends 8 byte SETUP packet at HOST_CTRL_SETUP
 &usb_control .(
 	jsr usb_prepare_ctrl
 	jmp usb_host_control

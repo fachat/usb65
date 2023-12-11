@@ -1,0 +1,6 @@
+
+
+SL811_HOST	=$ec98
+
+setup_io	rts
+

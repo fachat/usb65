@@ -1,0 +1,10 @@
+
+MAX3420E_EnMask	=0	; not used in SPI device, as only USB is connected	
+
+MAX_EP0_TXLEN   =64
+ENDPOINT_NO     =3
+
+prbuf		=$8000	; print ring buffer
+
+setup_io	rts
+

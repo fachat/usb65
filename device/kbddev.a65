@@ -25,6 +25,12 @@
  * when LEDs are set from host
  */
 
+#include "debug.i65"
+
+#include "usbdev.i65"
+#include "devmsg.i65"
+
+
 	.(
 	.zero
 
@@ -259,7 +265,7 @@ kbd_table
 	.byt $2f, "[", $7b, 0		; [ (US) ü (DE)
 	.byt $30, "]", $7d, 0		; ] (US) + (DE)
 
-	.byt $32, "\", $7c, 0		; \ (US) # (DE)
+	.byt $32, "\\", $7c, 0		; \ (US) # (DE)
 	.byt $33, ";", ":", 0		; ; (US) ö (DE)
 	.byt $34, "'", 34, 0		; ' (US) ä (DE)
 	.byt $35, "`", "^^", 0		; ` (US) ^ (DE) (Note: ^ is escape character in xa65)

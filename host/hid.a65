@@ -1,0 +1,98 @@
+/*
+    (C) 2011 Andre Fachat
+
+    This file is part of the 6502 USB Host Driver.
+
+    The 6502 USB Host Driver is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The 6502 USB Host Driver is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    Lesser GNU General Public License for more details.
+
+    You should have received a copy of the Lesser GNU General Public License
+    along with the 6502 USB Host Driver. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/*
+ * common HID functionality
+ * see: https://github.com/felis/USB_Host_Shield_2.0/blob/master/hidboot.h#L303
+ *
+ * usb_hid_set_idle
+ *	set idle mode
+ *	in: y=interface number, x=slot
+ *	Note: destroys ptr
+ *
+ * usb_hid_set_protocol
+ *	set protcol (e.g. USB_HID_BOOT_PROTOCOL)
+ *	in: y=interface number, x=slot, a=protocol
+ */
+
+	.(
+	.data
+
+; setup (ctrl) packet to set configuration
+setconf .byt 0, 0, 0, 0
+        .word 8		; max 8 bytes
+        .word 0		; no data
+        .word 0		; no buffer
+	;8 byte SETUP packet (overwritten in usb_hid_*)
+buffer	.byt 0,1,2,3,4,5,6,7
+
+	.text
+
+&usb_hid_set_idle .(
+	; SetIdle
+	; x is slot number
+	; y is interface number
+	;
+	sty buffer + USB_SETUP_INDEX
+	;
+	lda #bmREQ_HID_OUT
+	sta buffer + USB_SETUP_TYPE
+	lda #HID_REQUEST_SET_IDLE
+	sta buffer + USB_SETUP_REQ
+	lda #0
+	sta buffer + USB_SETUP_VALUE
+	sta buffer + USB_SETUP_VALUE+1
+	sta buffer + USB_SETUP_INDEX+1
+	sta buffer + USB_SETUP_LEN
+	sta buffer + USB_SETUP_LEN+1
+
+	; x is slot number
+	lda #<setconf
+	ldy #>setconf
+	jmp usb_control
+	.)
+
+&usb_hid_set_protocol .(
+	; SetProtocol 
+	; x is slot number
+	; y is interface number
+	; a is protocol
+	;
+	sty buffer + USB_SETUP_INDEX
+	sta buffer + USB_SETUP_VALUE
+	;
+	lda #bmREQ_HID_OUT
+	sta buffer + USB_SETUP_TYPE
+	lda #HID_REQUEST_SET_PROTOCOL
+	sta buffer + USB_SETUP_REQ
+	lda #USB_HID_BOOT_PROTOCOL
+	lda #0
+	sta buffer + USB_SETUP_VALUE+1
+	sta buffer + USB_SETUP_INDEX+1
+	sta buffer + USB_SETUP_LEN
+	sta buffer + USB_SETUP_LEN+1
+
+	; x is slot number
+	lda #<setconf
+	ldy #>setconf
+	jmp usb_control
+	.)
+
+	.)
+

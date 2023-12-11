@@ -1,7 +1,7 @@
 
 6502 USB Device Driver
 ======================
-(C) 2011 A.Fachat
+(C) 2011,2023 A.Fachat
 
 This is the USB Device driver for a 6502 CPU. It currently implements the following
 features:
@@ -10,7 +10,7 @@ features:
 - in principle slow and full speed device support, but due to timing requirements a 1MHz 6502 
   can only handle slow speed. 
 - Tested with a linux host only (SuSE 2.6.31.14-0.6-default kernel)
-- SL811(HS) hardware driver
+- SL811(HS) and MAX3420E hardware driver
 - hardware and logic driver separated, so other hardware can easily be integrated.
 
 Copyright

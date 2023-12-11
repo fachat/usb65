@@ -1,0 +1,148 @@
+/*
+    (C) 2011-2013 Andre Fachat
+
+    This file is part of the 6502 USB Host Driver.
+
+    The 6502 USB Host Driver is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The 6502 USB Host Driver is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    Lesser GNU General Public License for more details.
+
+    You should have received a copy of the Lesser GNU General Public License
+    along with the 6502 USB Host Driver. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+
+	;----------------------------------------------------------------
+	; virtual screen to print to from driver
+	; screen is simply used as rolling buffer, cleaning just the current row
+	; before writing to it, and starting from top once the bottom is reached.
+	.(
+	.zero	
+scrptr	.byt 0, 0, 0
+
+	.bss
+
+tmpx	.byt 0
+tmpy	.byt 0
+tmpc	.byt 0
+
+line	.byt 0	; current line
+col	.byt 0	; current col
+
+	.data
+
+colpl	.byt <0, <40, <80, <120, <160, <200, <240, <280, <320, <360, <400, <440, <480, <520, <560, <600, <640, <680, <720, <760, <800, <840, <880, <920, <960
+colph	.byt >0, >40, >80, >120, >160, >200, >240, >280, >320, >360, >400, >440, >480, >520, >560, >600, >640, >680, >720, >760, >800, >840, >880, >920, >960
+
+	.text
+
+LINES	=25	; 6 lines
+COLS	=40	; with 40 cols each (max below 256 bytes)
+SCRLEN	=LINES*COLS
+SPACE	=$20	; space character
+
+SCRBASE	=$08b800
+
+&log_init .(
+	jsr clrscr
+	rts
+	.)
+
+&log_printc .(
+	stx tmpx
+	sty tmpy
+	sta tmpc
+	cmp #$20
+	bcs printable
+	cmp #13
+	beq nextl
+printable
+	ldx line
+	jsr setptr
+
+	ldy col	
+	lda tmpc
+	and #$ff-$40	; to screen code
+	;ora #$80	; invers
+	sta [scrptr],y
+nextc	inc col
+	lda col
+	cmp #COLS
+	bcc endprint
+
+nextl	lda #0
+	sta col
+	ldx line
+	inx
+	cpx #LINES
+	bcc gonext
+	ldx #0
+gonext 	stx line
+
+	jsr setptr
+
+	.assert COLS < 128, "COLS too large"
+clrline	ldy #COLS-1
+	lda #SPACE
+c1	sta [scrptr],y
+	dey
+	bpl c1
+
+endprint
+	ldx tmpx
+	ldy tmpy
+	lda tmpc
+	rts
+	.)
+
+&clrscr .(
+	ldx #0
+	stx line
+	jsr setptr
+	stx col
+
+loop	ldy #COLS-1
+	lda #$20	; space, inverted
+l	sta [scrptr],y
+	dey
+	bpl l
+
+next	lda #COLS
+	clc
+	adc scrptr
+	sta scrptr
+	bcc cnt
+	inc scrptr+1
+cnt	inx
+	cpx #LINES
+	bcc loop
+	rts
+	.)
+
+	
+	; set long pointer to address of row given in x
+	; keeps a,x,y
+setptr	.(
+	pha
+	lda colpl,x
+	clc
+	adc #<SCRBASE
+	sta scrptr
+	lda colph,x
+	adc #>SCRBASE
+	sta scrptr+1
+	lda #SCRBASE>>16
+	sta scrptr+2
+	pla
+	rts
+	.)
+
+	.)
+
+

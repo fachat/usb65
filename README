@@ -8,8 +8,8 @@ them generic enough so they can be reused in many 6502 computers.
 Currently supported functionalities:
 
 - Keyboard (host+device)
-- mouse (host+device)
-- hub (as host, can enumerate devices connected via a hub!)
+- mouse (host)
+- hub (as host, can enumerate devices connected via a hub! - currently sl811hs only)
 
 Currently supported hardware:
 
@@ -26,32 +26,37 @@ Currently supported platforms:
 - Commodore PET with CS/A adapter 
 	- (tested only with NETUSB 1.x)
 
+- Commodore PET with Userport USB interface using a MAX3421
+
+- Micro-PET/UltraCPU with built-in MAX3421
+
+
 Future plans:
 -------------
 
-- code cleanup
-	- more generic assembler
-	- extract common code
-	- separate platform specific code
-- more supported platforms
 - more functionalities
 	- RS232 via USB
 	- mass storage device (USB stick)
 	- Network (ethernet?) via USB
+- fix device driver side
 
 Content
 -------
 
 - host/
-	USB host driver code
+	USB host code
 - device/
-	UBS device driver code
+	UBS device code
 - common/
 	separated out common code (e.g. for messages, or USB headers)
 - drivers/
-	hardware drivers for USB and necessary others (like SPI)
+	hardware drivers for USB and necessary others (like SPI),
+	separated by host, device, and spi
 - hardware/
 	description of supported hardware
+	The actual hardware is described 
+	here http://www.6502.org/users/andre/csa/netusb/index.html 
+	and here http://www.6502.org/users/andre/csa/usb/index.html
 - platform/
 	hold the platform specific code.
 	Here reside the main programs with the build code
@@ -60,10 +65,10 @@ Build note
 ----------
 
 At this time you need the "xa65" cross assembler to build it (and its associated
-"reloc65" tool). And even more, you need the head of the "listing" branch on github:
-https://github.com/fachat/xa65/tree/listing
+"reloc65" and "ldo65" tools). The required version is 2.4.0 or up.
 
-You can then "make" the code in the host/ and device/ subdirectories
+Using make, in the host, common, and driver directories, .o65 files are created.
+These are then linked with ldo65 in the platform builds
 
 It builds test executables for the CS/A for now. Those have a Commodore PET header,
 i.e. can be LOADed and RUN to a) enumerate the USB bus or b) let the PET be a keyboard
@@ -76,5 +81,10 @@ Known bugs
 - hub enumeration on MAX3421 does not yet work. 
 - keyboard mapping is preliminary
 - Only few features are implemented. E.g. there is no power management
+- Device driver only somewhat works
 
+Device quirks
+-------------
+
+- (all resolved at this time with the limited amount of devices tested)
 
