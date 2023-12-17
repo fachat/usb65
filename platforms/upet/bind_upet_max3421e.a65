@@ -3,10 +3,10 @@
 MAX3421E_EnMask	=2
 
 setup_io 
-		lda #32
-		sta $e880
-		lda #16+64+128
-		sta $e881	; map Viccy registers to memory
+;		lda #32
+;		sta $e880
+;		lda #16+64+128
+;		sta $e881	; map Viccy registers to memory
 
 		; enable right border to see inc/dec border colour events
 ;		lda #38

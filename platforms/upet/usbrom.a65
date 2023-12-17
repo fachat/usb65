@@ -47,8 +47,6 @@
 #undef	DEBUG_POLL
 #undef	DEBUG_HW
 
-#define	XMAX	#9	; at $e3 for 80 cols, or $03eb for 40 cols - so use constant
-
 #include "hostmsg.i65"
 
 	.zero

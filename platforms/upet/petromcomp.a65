@@ -1,5 +1,5 @@
 /*
-    (C) 2011-2013 Andre Fachat
+    (C) 2011-2023 Andre Fachat
 
     This file is part of the 6502 USB Host Driver.
 
@@ -292,4 +292,6 @@ full
 	.)
 
 	.)
+
+	.assert *<$e000, "boot code too large!"
 

@@ -48,6 +48,7 @@ SCRLEN	=LINES*COLS
 SPACE	=$20	; space character
 
 SCRBASE	=$08b800
+;SCRBASE	=$008300
 
 &log_init .(
 	jsr clrscr
