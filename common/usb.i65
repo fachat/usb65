@@ -77,6 +77,15 @@
 #define	HOST_POLL_MAXPKLEN	2	/* 2 byte, maximum packet length from EP descriptor */
 #define	HOST_POLL_CALLBACK	4	/* 2 byte, address of poll callback, all-zero ignored callback */
 
+
+; ---------------------------------------------------------------------------------------
+; keyboard callback params for C=1 
+; Values OR'd into AC to transport this state
+
+#define	KBD_CB_STOP		1	
+#define	KBD_CB_ANYPRESSED	2
+
+
 ; ---------------------------------------------------------------------------------------
 ; USB standard values
 

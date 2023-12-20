@@ -60,10 +60,13 @@ lastkeys .dsb 6,0
 prevmod	.byt 0		; previous state of the modifiers
 kcslot	.byt 0		; temp
 
+stopfl	.byt 0		; stop key flag
+numkeys	.byt 0		; number of keys currently pressed
+
 ; de-bounce
-#define	BOUNCE_CNT	2
-prevkey	.byt 0		; previous key value (translated)
-prevcnt	.byt 0		; how many times did we have this value?
+;#define	BOUNCE_CNT	2
+;prevkey	.byt 0		; previous key value (translated)
+;prevcnt	.byt 0		; how many times did we have this value?
 
 	.text
 
@@ -81,9 +84,9 @@ prevcnt	.byt 0		; how many times did we have this value?
 	ldy #MSG_HID_KEYBOARD
 	jsr print
 
-	lda #0
-	sta prevkey
-	sta prevmod
+	;lda #0
+	;sta prevkey
+	;sta prevmod
 
 	lda iface
 	sta send_led + HOST_CTRL_SETUP + 4
@@ -160,13 +163,14 @@ std_poll
 	; got some data?
 	cmp #8
 	bcc no_process
-	; compute modifiers
+	;
 #ifdef DEBUG_KBD
 	lda #"K"
 	jsr log_printc
 	lda kbdbuf
 	jsr hexout
 #endif
+	; compute modifiers
 	lda kbdbuf
 	lsr
 	lsr
@@ -180,10 +184,14 @@ std_poll
 	jsr send_mod
 nomod
 	ldx #0
-keyloop	stx kbdbuf+1	; counter in unused packet field
+	stx stopfl
+keyloop	stx numkeys
 	lda kbdbuf+2,x
 	beq endkloop
-	ldx #0
+	cmp #STPKEY	; "c" - to be verified with CTRL modifier
+	bne kl1a
+	ror stopfl	; remember to check for stop
+kl1a	ldx #0
 kl1	cmp lastkeys,x
 	beq nextkey	; key is in old list - so skip
 	inx
@@ -194,7 +202,7 @@ kl1	cmp lastkeys,x
 	jsr sendkey	; send it to callback
 
 	; check next entry in key list
-nextkey	ldx kbdbuf+1
+nextkey	ldx numkeys
 	inx
 	cpx #6
 	bcc keyloop
@@ -208,6 +216,23 @@ kl2	lda kbdbuf+2,x
 	bpl kl2
 
 no_process
+	; end of loop reached. Check if we need to propagate
+	; either a) any key is pressed or b) STOP is pressed
+
+	lda stopfl
+	beq no_stop
+	lda prevmod	; combined modifiers
+	and #1		; filter CTRL modifier
+	.assert KBD_CB_STOP == 1, "STOP flag bit"
+	; incidentially AC now is either 0 or KBD_CB_STOP
+no_stop	
+	ldx numkeys	; key counter
+	beq no_pressed
+	ora #KBD_CB_ANYPRESSED
+no_pressed
+	sec		
+	ldx kbdbuf	; modifiers
+	jsr usb_kbd_rx_key_cb
 	clc
 	rts
 
@@ -224,8 +249,9 @@ sendkey	.(
 	ldx prevmod	; modifier (with combined l/r bits)
 	jsr translate
 	bcs no_data
-	; callback to main code when we got a key	
+	; callback to main code when we got a key
 	ldx kbdbuf	; modifier (with different left/right bits)
+	clc
 	jsr usb_kbd_rx_key_cb
 no_data	rts
 	.)
@@ -251,7 +277,8 @@ send_mod .(
 	.)
 
 ; translate the keycode from the keyboard to the 
-; PETSCII code
+; PETSCII code;
+; IN: AC has keycode, XR has modifiers,
 translate .(
 #if 0
 	.data
@@ -317,6 +344,7 @@ no_mod	iny	; no mod, y+=1
 kbd_table
 	.byt $04, 65, 65+128, 1		; a
 	.byt $05, 66, 66+128, 2		; b
+STPKEY	=6
 	.byt $06, 67, 67+128, 3		; c
 	.byt $07, 68, 68+128, 4		; d
 	.byt $08, 69, 69+128, 5		; e

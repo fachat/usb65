@@ -314,7 +314,9 @@ p1	cmp VCOUNT
 ; callback from the keyboard code
 ; ac contains key from keyboard (in PETSCII)
 &usb_kbd_rx_key_cb .(
+	bcs stop
 	jsr printc2
+stop			; currently no STOP key handling
 	rts
 	.)
 	

@@ -51,6 +51,7 @@ tmpx	=$0700fe		;
 ;tmpx	=$033d
 	
 IRQV	=$90			; PET interrupt vector
+STPFL	=$9b			; STOP flag. If $ff, STOP key not pressed
 
 ; called from outside
 &usb_init	jmp init	; init the USB stack
@@ -64,43 +65,57 @@ IRQV	=$90			; PET interrupt vector
 
 ;------------------------------------------------
 
-install	.(
-	lda #0
-	sta $e801	; make memory writable
-
-	php
-	sei
-	lda #$4c	; JMP
-	sta $e452	; the original JMP ($0090)
-	lda #<newirq
-	sta $e453
-	lda #>newirq
-	sta $e454
-
-	lda #%11100000
-	sta $e801	; protect memory $a-fxxx
-
-	lda #0
-	sta lock
-	plp
-	rts
-	.)
-
 uninstall .(
+	lda #<$ffea
+	ldx #>$ffea
+	ldy #<-1
+	bne setaddr
+&install
+	lda #<newirq
+	ldx #>newirq
+	ldy #0		; lock value to set
+	; set interrupt addr from a/x
+setaddr	
+	php
+	sei
+
+	pha
+
+	tya
+	sta lock
+
 	lda #0
 	sta $e801	; make memory writable
 
-	php
-	sei
-	lda #$6c	; JMP
-	sta $e452	; the original JMP ($0090)
-	lda #<IRQV
-	sta $e453
-	lda #>IRQV
-	sta $e454
+	; x is not modified
+	lda $e455	; standard interrupt routine
+	cmp #$4c	; JMP on some ROMs
+	beq dojmp
+	lda #<$e456
+	ldy #>$e456
+	bne inject
+
+dojmp	ldy $e457	; E455 JMP XXXX ; get address from JMP
+	lda $e456
+	inc		; no overflow in current ROM
+inject	
+	sta addr2
+	sty addr2+1
+
+	pla
+	clc
+	.byt $24
+next2	sec
+addr2	=*+1
+	sta $ffff	; set from above
+	inc addr2	
+	; no overflow on current ROMs
+	txa
+	bcc next2
 
 	lda #%11100000
 	sta $e801	; protect memory $a-fxxx
+
 	plp
 	rts
 	.)
@@ -138,6 +153,10 @@ locked 	plp
 	;-------------------------------
 	; new interrupt routine
 &newirq
+	; do the part we've actually overwritten
+	; which includes checking for the STOP key.
+	jsr $ffea	
+
 	; The first part is such a BAD HACK(tm)
 	;
 	; After IEC load, the kernal calls F92B, assumingly to check
@@ -220,14 +239,8 @@ poll
 	inc
 	sta lock
 nopoll
-	; do we need this?
-	tsx
-	lda $0101,x
-	tay
-	lda #0
-
 	; return to original IRQ
-	jmp ($0090)	
+	rts
 	.)
 
 	;----------------------------------------------------------------
@@ -276,6 +289,8 @@ printc2 .(
 	
 	ldx #MAP_BAS
 	stx MAPREG
+	
+	bcs stop
 
 	ldx $9e
 	cpx XMAX
@@ -289,9 +304,21 @@ full
 	plx
 	plp
 	rts
+
+	;.assert KBD_CB_STOP == 1, "STOP key bit"
+stop	
+	;inc $8000
+	;sta $8001
+	ror		; check KBD_CB_STOP flag
+	bcc full
+	lda STPFL
+	and #$ef
+	sta STPFL
+	bra full
 	.)
 
 	.)
 
+;#print *
 	.assert *<$e000, "boot code too large!"
 
