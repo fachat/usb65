@@ -142,7 +142,7 @@ addr2	=*+1
 	plp
 	clc
 	jmp install
-	.byt $2c
+
 locked 	plp
 	sec
 	rts
