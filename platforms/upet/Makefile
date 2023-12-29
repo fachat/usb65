@@ -85,12 +85,12 @@ petromcomp: petromcomp.o65
 	# patched into $$df**
 	reloc65 -X -bt 57088 -o $@ $<
 
-usbrom: usbrom.o65 virtscreen.o65 ${HOST_O65} ${COMMON_O65} ${MXDRIVER_O65} ${MXBIND_O65}
+petrom: usbrom.o65 virtscreen.o65 ${HOST_O65} ${COMMON_O65} ${MXDRIVER_O65} ${MXBIND_O65}
 	# loaded to $$1000 in USB bank (7)
-	ldo65 -o $@..o65 $^
-	reloc65 -X -bt 4096 -o $@ $@..o65
+	ldo65 -o $@.o65 $^
+	reloc65 -X -bt 4096 -o $@ $@.o65
 
-petromldr: petromldr.a65 petromcomp usbrom
+petromldr: petromldr.a65 petromcomp petrom
 	xa -w -XMASM -P $@.lst -o $@ $<
 
 ###############################################
@@ -100,6 +100,6 @@ clean:
 	rm -f ${MAIN}
 	rm -f ${MXTSR} ${MXLOADER}
 	rm -f ${SLTSR} ${SLLOADER}
-	rm -f ${ROM} usbrom petromcomp
+	rm -f ${ROM} usbrom petromcomp petrom
 
 
