@@ -193,13 +193,13 @@ sta $8002
 #endif
 	;-------------------------------
 	; protect IEEE488 
-	lda $e840
-	and #$c1	; NRFDin, NDACin, DAVin
-	cmp #$c1	; active? then do not poll, as we might interfere with IEEE488 timing
-	bne nopoll
+;	lda $e840
+;	and #$c1	; NRFDin, NDACin, DAVin
+;	cmp #$c1	; active? then do not poll, as we might interfere with IEEE488 timing
+;	bne nopoll
 
-	lda $0106,x	; protect all interrupts in $f0xx-$f1xx
-	and #$f0
+	lda $0106,x	; protect all interrupts in $f0xx-$f3xx
+	and #$fc
 	cmp #$f0
 	beq nopoll
 	
