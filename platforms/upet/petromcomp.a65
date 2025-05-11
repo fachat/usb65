@@ -33,7 +33,7 @@
 	.(
 	.text
 
-USBBLK	=14			; USB code is running in bank 7
+USBBLK	=15			; USB code is running in bank 7
 
 MAP_USB	=USBBLK
 MAP_BAS	=0
@@ -112,8 +112,8 @@ addr2	=*+1
 	txa
 	bcc next2
 
-	lda #%11100000
-	sta $e801	; protect memory $a-fxxx
+	lda #%11000000
+	sta $e801	; protect memory $b-fxxx
 
 	plp
 	rts

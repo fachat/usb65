@@ -88,7 +88,7 @@ petromcomp: petromcomp.o65
 petrom: usbrom.o65 virtscreen.o65 ${HOST_O65} ${COMMON_O65} ${MXDRIVER_O65} ${MXBIND_O65}
 	# loaded to $$1000 in USB bank (7)
 	ldo65 -o $@.o65 $^
-	reloc65 -X -bt 4096 -o $@ $@.o65
+	reloc65 -v -X -bt 4096 -bz 32 -o $@ $@.o65
 
 petromldr: petromldr.a65 petromcomp petrom
 	xa -w -XMASM -P $@.lst -o $@ $<
