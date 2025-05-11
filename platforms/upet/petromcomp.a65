@@ -1,5 +1,5 @@
 /*
-    (C) 2011-2013 Andre Fachat
+    (C) 2011-2023 Andre Fachat
 
     This file is part of the 6502 USB Host Driver.
 
@@ -33,11 +33,10 @@
 	.(
 	.text
 
-USBBLK	=14			; USB code is running in bank 7
-VBLOCK	=2			; video block in video bank (bank 8)
+USBBLK	=15			; USB code is running in bank 7
 
-MAP_USB	=USBBLK + (VBLOCK << 4)
-MAP_BAS	=0 + (VBLOCK << 4)
+MAP_USB	=USBBLK
+MAP_BAS	=0
 MAPREG	=$e802
 
 USBBASE	=$1000			; load address of USB driver in bank 7
@@ -51,6 +50,7 @@ tmpx	=$0700fe		;
 ;tmpx	=$033d
 	
 IRQV	=$90			; PET interrupt vector
+STPFL	=$9b			; STOP flag. If $ff, STOP key not pressed
 
 ; called from outside
 &usb_init	jmp init	; init the USB stack
@@ -64,43 +64,57 @@ IRQV	=$90			; PET interrupt vector
 
 ;------------------------------------------------
 
-install	.(
-	lda #0
-	sta $e801	; make memory writable
-
-	php
-	sei
-	lda #$4c	; JMP
-	sta $e452	; the original JMP ($0090)
-	lda #<newirq
-	sta $e453
-	lda #>newirq
-	sta $e454
-
-	lda #%11100000
-	sta $e801	; protect memory $a-fxxx
-
-	lda #0
-	sta lock
-	plp
-	rts
-	.)
-
 uninstall .(
+	lda #<$ffea
+	ldx #>$ffea
+	ldy #<-1
+	bne setaddr
+&install
+	lda #<newirq
+	ldx #>newirq
+	ldy #0		; lock value to set
+	; set interrupt addr from a/x
+setaddr	
+	php
+	sei
+
+	pha
+
+	tya
+	sta lock
+
 	lda #0
 	sta $e801	; make memory writable
 
-	php
-	sei
-	lda #$6c	; JMP
-	sta $e452	; the original JMP ($0090)
-	lda #<IRQV
-	sta $e453
-	lda #>IRQV
-	sta $e454
+	; x is not modified
+	lda $e455	; standard interrupt routine
+	cmp #$4c	; JMP on some ROMs
+	beq dojmp
+	lda #<$e456
+	ldy #>$e456
+	bne inject
 
-	lda #%11100000
-	sta $e801	; protect memory $a-fxxx
+dojmp	ldy $e457	; E455 JMP XXXX ; get address from JMP
+	lda $e456
+	inc		; no overflow in current ROM
+inject	
+	sta addr2
+	sty addr2+1
+
+	pla
+	clc
+	.byt $24
+next2	sec
+addr2	=*+1
+	sta $ffff	; set from above
+	inc addr2	
+	; no overflow on current ROMs
+	txa
+	bcc next2
+
+	lda #%11000000
+	sta $e801	; protect memory $b-fxxx
+
 	plp
 	rts
 	.)
@@ -128,7 +142,7 @@ uninstall .(
 	plp
 	clc
 	jmp install
-	.byt $2c
+
 locked 	plp
 	sec
 	rts
@@ -138,6 +152,10 @@ locked 	plp
 	;-------------------------------
 	; new interrupt routine
 &newirq
+	; do the part we've actually overwritten
+	; which includes checking for the STOP key.
+	jsr $ffea	
+
 	; The first part is such a BAD HACK(tm)
 	;
 	; After IEC load, the kernal calls F92B, assumingly to check
@@ -175,13 +193,13 @@ sta $8002
 #endif
 	;-------------------------------
 	; protect IEEE488 
-	lda $e840
-	and #$c1	; NRFDin, NDACin, DAVin
-	cmp #$c1	; active? then do not poll, as we might interfere with IEEE488 timing
-	bne nopoll
+;	lda $e840
+;	and #$c1	; NRFDin, NDACin, DAVin
+;	cmp #$c1	; active? then do not poll, as we might interfere with IEEE488 timing
+;	bne nopoll
 
-	lda $0106,x	; protect all interrupts in $f0xx-$f1xx
-	and #$f0
+	lda $0106,x	; protect all interrupts in $f0xx-$f3xx
+	and #$fc
 	cmp #$f0
 	beq nopoll
 	
@@ -220,14 +238,8 @@ poll
 	inc
 	sta lock
 nopoll
-	; do we need this?
-	tsx
-	lda $0101,x
-	tay
-	lda #0
-
 	; return to original IRQ
-	jmp ($0090)	
+	rts
 	.)
 
 	;----------------------------------------------------------------
@@ -276,6 +288,8 @@ printc2 .(
 	
 	ldx #MAP_BAS
 	stx MAPREG
+	
+	bcs stop
 
 	ldx $9e
 	cpx XMAX
@@ -289,7 +303,21 @@ full
 	plx
 	plp
 	rts
+
+	;.assert KBD_CB_STOP == 1, "STOP key bit"
+stop	
+	;inc $8000
+	;sta $8001
+	ror		; check KBD_CB_STOP flag
+	bcc full
+	lda STPFL
+	and #$ef
+	sta STPFL
+	bra full
 	.)
 
 	.)
+
+;#print *
+	.assert *<$e000, "boot code too large!"
 

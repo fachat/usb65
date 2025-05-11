@@ -61,10 +61,20 @@ pc2	lda usbrom,x
 
 	cli
 
-	rts
+	; unfortunately just calling $df00 directly 
+	; makes the USB keyboard break when pressing ENTER
 	
+	ldy #0
+tl	lda text,y
+	beq tend
+	jsr $ffd2
+	iny
+	bne tl
+tend	rts
+text
+	.asc 13,"INIT WITH ",13,"SYS57088: REM UNINSTALL WITH SYS57094",13, 0	
 petrom
 	.bin 0,0, "petromcomp"
 usbrom
-	.bin 0,0, "usbrom"
+	.bin 0,0, "petrom"
 end

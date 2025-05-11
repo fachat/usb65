@@ -112,11 +112,19 @@ retries	.word 0
 	; deassert reset
 	wreg(rUSBCTL, 0)
 
+	ldx #0
+
 	; wait for oscillator (chip reset stops it, need to wait for coming up)
 l0	rreg(rUSBIRQ)
 	and #bmOSCOKIRQ
-	beq l0
+	bne found
 
+	dex
+	bne l0
+	; timeout
+	sec
+	beq err
+found
 	; set into HOST mode
 	; weak pull down on D+ and D- for SAMPLEBUS to work
 	wreg(rMODE, bmHOST + bmDPPULLDN + bmDMPULLDN)

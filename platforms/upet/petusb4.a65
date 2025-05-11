@@ -231,7 +231,9 @@ p1	cmp VCOUNT
 ; ac contains key from keyboard (in PETSCII)
 &usb_kbd_rx_key_cb .(
 	inc $a7
+	bcs stop	; when stop is still being pressed
 	jsr log_printc
+stop			; currently no stop key handling
 	dec $a7
 	rts
 	.)
