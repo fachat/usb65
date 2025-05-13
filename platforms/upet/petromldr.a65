@@ -9,6 +9,14 @@
  * to $1000 in bank 7 (where the USB driver code resides)
  */
 
+COMPADDR	=$df00
+DRIVERADDR	=$071000
+
+pause_a		=COMPADDR+9+1
+driver_pause_a	=DRIVERADDR+6+1
+print_a		=COMPADDR+12+1
+driver_print_a	=DRIVERADDR+9+1
+
 	.word $0401
 	*=$0401
 
@@ -27,7 +35,7 @@ eol	.word 0			; BASIC link pointer, 0 means end of code
 	; copy petromcomp over ROM at page $dfxx
 	ldy #0
 pc1	lda petrom,y
-	sta $df00,y
+	sta COMPADDR,y
 	iny
 	cpy #usbrom - petrom
 	bne pc1
@@ -47,10 +55,19 @@ pc1	lda petrom,y
 
 	ldx #0
 pc2	lda usbrom,x
-	sta $071000,x
+	sta DRIVERADDR,x
 	inx
 	cpx #end - usbrom
 	bne pc2
+
+        lda #<pause_a
+        sta driver_pause_a
+        lda #>pause_a
+        sta driver_pause_a+1
+        lda #<print_a
+        sta driver_print_a
+        lda #>print_a
+        sta driver_print_a+1
 
 	; 8bit index registers
 	sep #%00010000

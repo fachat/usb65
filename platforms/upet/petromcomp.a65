@@ -26,25 +26,35 @@
  * in the new interrupt routine.
  */
 
-#undef	DEBUG
-#undef	DEBUG_POLL
-#undef	DEBUG_HW
+#undef DEBUG
+#undef DEBUG_POLL
+#undef DEBUG_HW
 
-	.(
-	.text
+       .(
+       .text
 
-USBBLK	=15			; USB code is running in bank 7
+#ifndef UPETROM
+USBBLK =15                     ; USB code is running in bank 7
 
-MAP_USB	=USBBLK
-MAP_BAS	=0
-MAPREG	=$e802
+MAP_USB        =USBBLK
+MAP_BAS        =0
+MAPREG =$e802
 
-USBBASE	=$1000			; load address of USB driver in bank 7
+USBBASE        =$1000                  ; load address of USB driver in bank 7
 
-driver_init 	=USBBASE
+driver_init	=USBBASE
 driver_poll	=USBBASE+3
 
+; where to put the address of the pause and print routines 
+; when installing the driver
+;driver_pause_a	=USBBASE+6+1
+;driver_print_a	=USBBASE+9+1
+
 lock	=$0700ff		; last byte in zeropage in bank 7
+
+VCOUNT=$99
+#endif
+
 tmpx	=$0700fe		; 
 ;lock	=$033c
 ;tmpx	=$033d
@@ -53,14 +63,14 @@ IRQV	=$90			; PET interrupt vector
 STPFL	=$9b			; STOP flag. If $ff, STOP key not pressed
 
 ; called from outside
-&usb_init	jmp init	; init the USB stack
-&usb_inst	jmp install	; patch in USB interrupt into ROM
-&usb_uninst	jmp uninstall	; remove USB patch
+		jmp init	; init the USB stack
+		jmp install	; patch in USB interrupt into ROM
+		jmp uninstall	; remove USB patch
 ; called from USB driver interrupt routine
-&usb_pause	jmp pause	; 
-&usb_appendkey	jmp printc2
+pause_a		jmp pause	; 
+print_a		jmp printc2
 ; internal
-&usb_irq	jmp newirq
+		jmp newirq
 
 ;------------------------------------------------
 
@@ -248,7 +258,6 @@ nopoll
 	; to protect the output
 
 
-VCOUNT=$99
 
 ; pause a given number of vertical screen retraces (1/50th seconds)
 ; in AC has number of frames (retraces)

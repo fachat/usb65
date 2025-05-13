@@ -34,10 +34,8 @@
  * so time-consuming scroll is avoided.
  *
  * The actual code to handle the interrupt from the BASIC4 kernal ROM is in a companion
- * file that is patched into some unused ROM area (e.g. $fd60-$ff90, or even in BASIC space
- * at $dec8-$dfff. 
- *
- * This code switches low memory when needed and calls the driver. It also handles switching
+ * file that is patched into some unused ROM area. The companions code switches low memory 
+ * when needed and calls the driver. It also handles switching
  * back to normal BASIC low memory when the keyboard and mouse callbacks are called
  * (more specifically printc2 to put a char into the keyboard buffer)
  * 
@@ -66,16 +64,14 @@ dbg_ptr		.word 0
 
 	.(
 
-	; companion addresses in ROM
-COMPBASE	=$df00
-usb_pause	=COMPBASE + 9
-usb_appendkey	=COMPBASE + 12
-
-&pause		=usb_pause
-printc2		=usb_appendkey
-
 	jmp init
 	jmp usb_polldev
+&pause	; callback from driver to wait for a certain amount
+	; real address is patched in by companion
+	jmp return
+printc2	; callback to append a HID key (keyboard, or cursor from mouse)
+	; real address is patched in by companion
+	jmp return
 
 	;----------------------------------------------
 	; init inits everything, and checks for the hardware
@@ -101,7 +97,7 @@ hwfound
         jsr prversion                                                             
 
         clc                                                                         
-        rts
+&return rts
 	.)
 
 	; callback from debug code. Unused here
