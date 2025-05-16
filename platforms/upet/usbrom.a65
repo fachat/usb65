@@ -65,7 +65,7 @@ dbg_ptr		.word 0
 	.(
 
 	jmp init
-	jmp usb_polldev
+	jmp do_usb_polldev
 &pause	; callback from driver to wait for a certain amount
 	; real address is patched in by companion
 	jmp return
@@ -97,9 +97,11 @@ hwfound
         jsr prversion                                                             
 
         clc                                                                         
-&return rts
 	.)
+return rts
 
+do_usb_polldev
+	jmp usb_polldev
 	; callback from debug code. Unused here
 +waitkey .(
 	rts

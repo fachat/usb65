@@ -10,11 +10,11 @@
  */
 
 COMPADDR	=$df00
-DRIVERADDR	=$071000
+DRIVERADDR	=$079000
 
-pause_a		=COMPADDR+9+1
+pause_a		=COMPADDR+9
 driver_pause_a	=DRIVERADDR+6+1
-print_a		=COMPADDR+12+1
+print_a		=COMPADDR+12
 driver_print_a	=DRIVERADDR+9+1
 
 	.word $0401

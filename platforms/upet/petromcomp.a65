@@ -34,7 +34,7 @@
        .text
 
 #ifndef UPETROM
-USBBLK =15                     ; USB code is running in bank 7
+USBBLK =15                     ; USB code is running in upper half of bank 7
 
 MAP_USB        =USBBLK
 MAP_BAS        =0
@@ -238,7 +238,6 @@ poll
 
 	lda #MAP_USB
 	sta MAPREG
-
 	jsr driver_poll
 
 	lda #MAP_BAS
@@ -263,7 +262,6 @@ nopoll
 ; in AC has number of frames (retraces)
 pause   .(
 	php
-
 	ldx #MAP_BAS
 	stx MAPREG
 
