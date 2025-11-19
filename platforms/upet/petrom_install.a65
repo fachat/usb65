@@ -62,17 +62,29 @@ dojmp	ldy $e457	; E455 JMP XXXX ; get address from JMP
 inject	
 	sta addr2
 	sty addr2+1
+	sta addr3
+	sty addr3+1
 
 	pla
 	clc
 	.byt $24
 next2	sec
+addr3	=*+1
+	ldy $ffff
 addr2	=*+1
 	sta $ffff	; set from above
 	inc addr2	
+	inc addr3	
 	; no overflow on current ROMs
+	bcs exit
+	phy
 	txa
+	plx
 	bcc next2
+exit
+	; save the original addr
+	stx origaddr
+	sty origaddr+1
 
 	lda #%11000000
 	sta $e801	; protect memory $b-fxxx
@@ -119,7 +131,10 @@ newirq	.(
 
 	; do the part we've actually overwritten
 	; which includes checking for the STOP key.
-	jsr $ffea	
+	;
+	; value will be filled during installation
+&origaddr =*+1
+	jsr 0	;$ffea	
 
 	; The first part is such a BAD HACK(tm)
 	;
