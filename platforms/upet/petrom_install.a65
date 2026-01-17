@@ -1,0 +1,298 @@
+/*
+    (C) 2011-2025 Andre Fachat
+
+    This file is part of the 6502 USB Host Driver.
+
+    The 6502 USB Host Driver is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The 6502 USB Host Driver is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    Lesser GNU General Public License for more details.
+
+    You should have received a copy of the Lesser GNU General Public License
+    along with the 6502 USB Host Driver. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/*
+ * This code is patched into the BASIC4/KERNAL ROM to provide the necessary interface
+ * for the USB host driver running in a separate memory bank
+ *
+ * This file contains only the install routine
+ *
+ * Any install routine should run usb_init here, and check C afterwards.
+ * If c=0 then hardware is found and usb_install can be called to patch
+ * in the new interrupt routine.
+ */
+
+#ifdef USB_INSTALL
+;------------------------------------------------
+; install the USB code
+usb_install .(
+	lda #<newirq
+	ldx #>newirq
+	ldy #0		; lock value to set
+
+	; set interrupt addr from a/x
+	php
+	sei
+
+	pha
+
+	tya
+	sta lock
+
+	lda #0
+	sta $e801	; make memory writable
+
+	; x is not modified
+	lda $e455	; standard interrupt routine
+	cmp #$4c	; JMP on some ROMs
+	beq dojmp
+	lda #<$e456
+	ldy #>$e456
+	bne inject
+
+dojmp	ldy $e457	; E455 JMP XXXX ; get address from JMP
+	lda $e456
+	inc		; no overflow in current ROM
+inject	
+	sta addr2
+	sty addr2+1
+	sta addr3
+	sty addr3+1
+
+	pla
+	clc
+	.byt $24
+next2	sec
+addr3	=*+1
+	ldy $ffff
+addr2	=*+1
+	sta $ffff	; set from above
+	inc addr2	
+	inc addr3	
+	; no overflow on current ROMs
+	bcs exit
+	phy
+	txa
+	plx
+	bcc next2
+exit
+	; save the original addr
+	stx origaddr
+	sty origaddr+1
+
+	lda #%11000000
+	sta $e801	; protect memory $b-fxxx
+
+	plp
+	rts
+	.)
+#endif // USB_INSTALL
+
+#ifdef USB_INIT
+	;-------------------------------
+	; init the driver in USB bank and check for hardware
+	; if returns with C=0, we can install interrupt handler
+usb_init .(
+	php
+	sei
+
+	ldx #MAP_USB
+	stx MAPREG
+
+	lda #<-1
+	sta lock
+
+	jsr driver_init
+
+	ldx #MAP_BAS
+	stx MAPREG
+
+	bcs locked
+	plp
+	clc
+	jmp usb_install
+
+locked 	plp
+	sec
+	rts
+	.)
+#endif	// USB_INIT
+
+#ifdef USB_NEWIRQ
+	;-------------------------------
+	; new interrupt routine
+newirq	.(	
+
+	; do the part we've actually overwritten
+	; which includes checking for the STOP key.
+	;
+	; value will be filled during installation
+&origaddr =*+1
+	jsr 0	;$ffea	
+
+	; The first part is such a BAD HACK(tm)
+	;
+	; After IEC load, the kernal calls F92B, assumingly to check
+	; the RUN/STOP key a last time. But starting from F92E it checks
+	; whether the interrupt vector is set to page $E4xx - and if not,
+	; just loops! One way around this is the following
+	; BAD HACK:
+	; in the interrupt routine, we check whether we have interrupted the
+	; code in just this place, and then forward the RTI address on the
+	; stack such that the check is ignored.
+	; However, it seems there are conditions where this still did not 
+	; trigger. My assumption is that the number of cycles for a screen
+	; (interrupt) is similar to when checking the STOP key in the loop
+	; So, instead, we re-purpose the BRK vector jump, which is at 
+	; $E44F and use the BRK code instead
+	; 
+	tsx
+
+	;-------------------------------
+	; debug output
+#ifdef DEBUG
+lda $0105,x
+sta $8000
+lda $0106,x
+sta $8001
+lda lock
+sta $8002
+	inc DBGBASE+0
+	lda $96		; kernel status
+	sta DBGBASE+1
+	lda lock
+	sta DBGBASE+2
+	lda $e840
+	sta DBGBASE+5
+#endif
+	;-------------------------------
+	; protect IEEE488 
+;	lda $e840
+;	and #$c1	; NRFDin, NDACin, DAVin
+;	cmp #$c1	; active? then do not poll, as we might interfere with IEEE488 timing
+;	bne nopoll
+
+	lda $0106,x	; protect all interrupts in $f0xx-$f3xx
+	and #$fc
+	cmp #$f0
+	beq nopoll
+	
+	;-------------------------------
+	; check soft lock
+	; no race condition, we can safely assume to not be interrupted (on single-cpu)
+
+	lda lock
+	bmi nopoll
+
+	;-------------------------------
+	; poll the USB bus
+poll
+
+#ifdef DEBUG
+	tsx
+	lda $0105,x
+	sta DBGBASE+3
+	lda $0106,x
+	sta DBGBASE+4
+#endif
+
+	lda lock	; lock so we don't get into poll again for now; results in $ff
+	dec
+	sta lock
+
+	lda #MAP_USB
+	sta MAPREG
+	jsr driver_poll
+
+	lda #MAP_BAS
+	sta MAPREG
+
+	lda lock
+	inc
+	sta lock
+nopoll
+	; return to original IRQ
+	rts
+	.)
+#endif 	// USB_NEWIRQ
+
+#ifdef USB_PAUSE
+	;----------------------------------------------------------------
+	; those callbacks are being called from the driver, i.e. 
+	; actually from within somewhere in the code. We need
+	; to protect the output
+
+; pause a given number of vertical screen retraces (1/50th seconds)
+; in AC has number of frames (retraces)
+pause   .(
+	php
+	ldx #MAP_BAS
+	stx MAPREG
+
+	cli
+	tax
+	inx           ; full retraces, so one more border between traces
+p0	lda VCOUNT
+p1	cmp VCOUNT
+	beq p1
+	dex
+	bne p0
+
+	sei
+	ldx #MAP_USB
+	stx MAPREG
+
+	plp
+	rts
+	.)
+#endif // USB_PAUSE
+
+#ifdef USB_PRINT2
+	;----------------------------------------------------------------
+
+#define XMAX    #9      ; at $e3 for 80 cols, or $03eb for 40 cols - so use constant 
+
+printc2 .(
+	; write a char into the key buffer (if not filled already)
+	php
+	sei
+	phx
+	
+	ldx #MAP_BAS
+	stx MAPREG
+	
+	bcs stop
+
+	ldx $9e
+	cpx XMAX
+	bcs full
+	sta $026f,x
+	inc $9e
+full 	
+	ldx #MAP_USB
+	stx MAPREG
+
+	plx
+	plp
+	rts
+
+	;.assert KBD_CB_STOP == 1, "STOP key bit"
+stop	
+	;inc $8000
+	;sta $8001
+	ror		; check KBD_CB_STOP flag
+	bcc full
+	lda STPFL
+	and #$ef
+	sta STPFL
+	bra full
+	.)
+#endif // USB_PRINT2
+
+
