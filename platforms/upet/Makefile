@@ -1,6 +1,6 @@
 
 MAIN=upetusb
-ROM=petromldr
+ROM=petrom4ldr
 
 MAIN_O65=petusb4.o65 
 TSR_O65=petusbdrv.o65 overlayscreen.o65
@@ -75,13 +75,10 @@ ${SLLOADER}: petusbloader.o65 ${SLTSR}
 ###############################################
 # binding patched into ROM, driver in bank 7
 
-petromcomp.o65: petromcomp.a65 
-	xa -w -R -XMASM -bt 57088 -P $(patsubst %.o65,%.lst,$@) -o $@ $<
-
 virtscreen.o65: virtscreen.a65 
 	xa -w -R -XMASM -bt 57088 -P $(patsubst %.o65,%.lst,$@) -o $@ $<
 
-petromcomp: petromcomp.o65 
+petrom4_comp: petrom4_comp.o65 
 	# patched into $$df**
 	reloc65 -X -bt 57088 -o $@ $<
 
@@ -90,7 +87,7 @@ petrom: usbrom.o65 virtscreen.o65 ${HOST_O65} ${COMMON_O65} ${MXDRIVER_O65} ${MX
 	ldo65 -o $@.o65 $^
 	reloc65 -v -X -bt 4096 -bz 32 -o $@ $@.o65
 
-petromldr: petromldr.a65 petromcomp petrom
+petrom4ldr: petrom4ldr.a65 petrom4_comp.a65 petrom4_install.a65 petrom
 	xa -w -XMASM -P $@.lst -o $@ $<
 
 ###############################################

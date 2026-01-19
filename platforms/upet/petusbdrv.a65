@@ -18,10 +18,7 @@
 */
 
 /*
- * this code installs the USB driver at the end of the PET 32k RAM
- * and patches it into the interrupt routine, so that it can
- * run in background and be used as keyboard driver
- *
+ * This is the resident part of the USB-companion
  * (C) 2011 A. Fachat
  */
 

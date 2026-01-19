@@ -10,11 +10,21 @@
  */
 
 COMPADDR	=$df00
-DRIVERADDR	=$079000
+INSTADDR	=$9000		; needs to be in upper 32k as it remaps lower 32k
+;DRIVERADDR	=$079000	; bank 15 = $078000 + $1000 DRIVERADDR
+DRIVERADDR	=$1000		; bank 15 = $078000 + $1000 DRIVERADDR
 
-pause_a		=COMPADDR+9
+MAP_USB		=15
+MAP_BAS		=0
+MAPREG		=$e802
+
+lock		=$0700ff
+VCOUNT		=$99
+
+driver_poll	=DRIVERADDR+3
+driver_init	=DRIVERADDR+0
+
 driver_pause_a	=DRIVERADDR+6+1
-print_a		=COMPADDR+12
 driver_print_a	=DRIVERADDR+9+1
 
 	.word $0401
@@ -34,11 +44,19 @@ eol	.word 0			; BASIC link pointer, 0 means end of code
 
 	; copy petromcomp over ROM at page $dfxx
 	ldy #0
-pc1	lda petrom,y
+pc1	lda petrom_comp,y
 	sta COMPADDR,y
 	iny
-	cpy #usbrom - petrom
+	cpy #usbrom - petrom_comp
 	bne pc1
+
+	; copy petrom_install over ROM at page $9000
+	ldy #0
+pc1a	lda petrom_install,y
+	sta INSTADDR,y
+	iny
+	cpy #petrom_comp - petrom_install
+	bne pc1a
 
 	; write-protect ROM again
 	lda #%11100000
@@ -55,19 +73,10 @@ pc1	lda petrom,y
 
 	ldx #0
 pc2	lda usbrom,x
-	sta DRIVERADDR,x
+	sta DRIVERADDR+(MAP_USB << 15),x
 	inx
 	cpx #end - usbrom
 	bne pc2
-
-        lda #<pause_a
-        sta driver_pause_a
-        lda #>pause_a
-        sta driver_pause_a+1
-        lda #<print_a
-        sta driver_print_a
-        lda #>print_a
-        sta driver_print_a+1
 
 	; 8bit index registers
 	sep #%00010000
@@ -77,6 +86,8 @@ pc2	lda usbrom,x
 	xce
 
 	cli
+inc $8000
+	jsr usb_init
 
 	; unfortunately just calling $df00 directly 
 	; makes the USB keyboard break when pressing ENTER
@@ -89,9 +100,16 @@ tl	lda text,y
 	bne tl
 tend	rts
 text
-	.asc 13,"INIT WITH ",13,"SYS57088: REM UNINSTALL WITH SYS57094",13, 0	
-petrom
-	.bin 0,0, "petromcomp"
+	.asc 13,"USB INSTALLED",13, 0	
+
+petrom_install
+	*=INSTADDR
+#include petrom4_install.a65
+	*=petrom_install+*-INSTADDR
+petrom_comp
+	*=COMPADDR
+#include petrom4_comp.a65
+	*=petrom_comp+*-COMPADDR
 usbrom
 	.bin 0,0, "petrom"
 end

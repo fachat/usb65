@@ -1,0 +1,139 @@
+/*
+    (C) 2011-2025 Andre Fachat
+
+    This file is part of the 6502 USB Host Driver.
+
+    The 6502 USB Host Driver is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The 6502 USB Host Driver is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    Lesser GNU General Public License for more details.
+
+    You should have received a copy of the Lesser GNU General Public License
+    along with the 6502 USB Host Driver. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/*
+ * This code is patched into the BASIC4/KERNAL ROM to provide the necessary interface
+ * for the USB host driver running in a separate memory bank
+ *
+ * This file contains only the install routine
+ *
+ * Any install routine should run usb_init here, and check C afterwards.
+ * If c=0 then hardware is found and usb_install can be called to patch
+ * in the new interrupt routine.
+ */
+
+;------------------------------------------------
+; install the USB code
+usb_install .(
+
+	; --------------------------
+	; setup the core driver to call back into our companion
+	lda #<pause_a
+	sta driver_pause_a
+	lda #>pause_a
+	sta driver_pause_a+1
+	lda #<print_a
+	sta driver_print_a
+	lda #>print_a
+	sta driver_print_a+1
+
+	; --------------------------
+	; install driver code into IRQ	
+	lda #<usb_newirq
+	ldx #>usb_newirq
+	ldy #0		; lock value to set
+
+	; set interrupt addr from a/x
+	php
+	sei
+
+	pha
+
+	tya
+	sta lock
+
+	lda #0
+	sta $e801	; make memory writable
+
+	; x is not modified
+	lda $e455	; standard interrupt routine
+	cmp #$4c	; JMP on some ROMs
+	beq dojmp
+	lda #<$e456
+	ldy #>$e456
+	bne inject
+
+dojmp	ldy $e457	; E455 JMP XXXX ; get address from JMP
+	lda $e456
+	inc		; no overflow in current ROM
+inject	
+	sta addr2
+	sty addr2+1
+	sta addr3
+	sty addr3+1
+
+	pla
+	clc
+	.byt $24
+next2	sec
+addr3	=*+1
+	ldy $ffff
+addr2	=*+1
+	sta $ffff	; set from above
+	inc addr2	
+	inc addr3	
+	; no overflow on current ROMs
+	bcs exit
+	phy
+	txa
+	plx
+	bcc next2
+exit
+	; save the original addr
+	stx usb_origaddr
+	sty usb_origaddr+1
+
+	; --------------------------
+	lda #%11000000
+	sta $e801	; protect memory $b-fxxx
+
+	plp
+	rts
+	.)
+
+	;-------------------------------
+	; init the driver in USB bank and check for hardware
+	; if returns with C=0, we install interrupt handler
+usb_init .(
+	php
+	sei
+
+	ldx #MAP_USB
+	stx MAPREG
+
+	lda #<-1
+	sta lock
+inc $8001
+	jsr driver_init
+inc $8002
+
+	ldx #MAP_BAS
+	stx MAPREG
+
+	bcs locked
+	plp
+	clc
+inc $8003
+	jmp usb_install
+
+locked 	plp
+	sec
+	rts
+	.)
+
