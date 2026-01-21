@@ -1,5 +1,5 @@
 /*
-    (C) 2011 Andre Fachat
+    (C) 2011,2026 Andre Fachat
 
     This file is part of the 6502 USB Host Driver.
 
@@ -63,7 +63,7 @@ fullspeed
 	pha
 	txa
 	pha
-	jsr waitkey
+	;jsr waitkey
 	pla
 	tax
 	pla
@@ -85,11 +85,16 @@ detected
 	beq hub
 	cmp #CLASS_HID
 	beq perifc	; to be verified
+
+	ldy #MSG_UNKNOWN_DEV
+	jsr printx
 	sec
 	rts
 	; ------------------------------------------------------------------
 	; handle a generic device (where the actual class/subclass/proto
 	; is done in the interfaces
+	;
+	; for device classes see https://en.wikipedia.org/wiki/USB#Device_classes
 perifc
 	jsr dseparator
 
@@ -107,20 +112,23 @@ nextcfg
 	cmp #DESC_TYPE_INTERFACE
 	bne gotcfg
 
-	ldy #MSG_DETECT_HID
+	ldy #MSG_DETECT_IFC
 	jsr print
 
 	; ptr contains pointer to interface desc
 	ldy #DESC_IFC_CLASS
 	lda (ptr),y
 	cmp #CLASS_HID
-	bne next_ifc
+	bne unknown_ifc
+
+	ldy #MSG_DETECT_HID
+	jsr print
 
 	; go a HID interface desc	
-	iny			; DESC_IFC_SUBCLASS
+	ldy #DESC_IFC_SUBCLASS
 	lda (ptr),y
 	cmp #SUBCLASS_HID_KMT
-	bne next_ifc
+	bne unknown_hid_class
 
 	ldy #DESC_IFC_NUM	; interface number
 	lda (ptr),y
@@ -132,6 +140,15 @@ nextcfg
 	beq got_kbd
 	cmp #PROT_HID_KMT_MOUSE
 	beq got_mouse
+	ldy #MSG_UNKNOWN_HID_PROTO
+	.byt $2c
+unknown_hid_class
+	ldy #MSG_UNKNOWN_HID_CLASS
+	.byt $2c
+unknown_ifc
+	ldy #MSG_UNKNOWN_IFC
+	jsr printx
+	lda #0
 next_ifc
 	jmp gotcfg		; next interface
 

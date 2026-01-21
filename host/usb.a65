@@ -1,5 +1,5 @@
 /*
-    (C) 2011 Andre Fachat
+    (C) 2011,2026 Andre Fachat
 
     This file is part of the 6502 USB Host Driver.
 
@@ -456,7 +456,7 @@ n2	inx
 	; here ac has new device number, y the new slot
 
 	sta devnum,y		; is needed by getdesc below! Reserves control slot!
-DMSG("DOSETADDR")
+	DMSG("DOSETADDR")
 	jsr dosetaddr		; get new device num, set it to device
 	bcs errexit
 
@@ -464,9 +464,10 @@ DMSG("DOSETADDR")
 	tya			; slot number
 	ldx #DESC_TYPE_DEVICE	; request device descriptor
 	ldy #0			; desc index 0
-DMSG("USB_GETDESC")
+	DMSG("USB_GETDESC")
 	jsr usb_getdesc
 	bcc gotdesc
+	DMSG("NO DESC")
 	bcs errexit		; release resources (devnum, slot)
 
 	; nores does not release device no, as we did not get one
@@ -662,6 +663,7 @@ gotres
 	ldy #>getdesc
 	jsr usb_control
 	bcc gotdesc
+DMSG("USB CONTROL FAIL")
 	rts
 gotdesc	ldx #<buffer
 	ldy #>buffer

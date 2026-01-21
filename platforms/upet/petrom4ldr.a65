@@ -86,7 +86,6 @@ pc2	lda usbrom,x
 	xce
 
 	cli
-inc $8000
 	jsr usb_init
 
 	; unfortunately just calling $df00 directly 

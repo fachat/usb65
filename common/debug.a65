@@ -282,7 +282,7 @@ enter_msg
 reg_msg 
 	.asc "[AXYSP=", 0
 end_ent_msg
-	.asc "]",13,0
+	.asc "]",0
 
 	.text
 

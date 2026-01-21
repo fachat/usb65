@@ -119,9 +119,7 @@ usb_init .(
 
 	lda #<-1
 	sta lock
-inc $8001
 	jsr driver_init
-inc $8002
 
 	ldx #MAP_BAS
 	stx MAPREG
@@ -129,7 +127,6 @@ inc $8002
 	bcs locked
 	plp
 	clc
-inc $8003
 	jmp usb_install
 
 locked 	plp

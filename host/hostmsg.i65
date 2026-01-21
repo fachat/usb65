@@ -47,6 +47,11 @@
 #define	MSG_HID_MOUSE		19
 #define	MSG_DEVICE_NO		20
 #define	MSG_WAIT_KEY		21
+#define	MSG_UNKNOWN_IFC		22
+#define	MSG_UNKNOWN_HID_CLASS	23
+#define	MSG_UNKNOWN_HID_PROTO	24
+#define	MSG_DETECT_IFC		25
+#define	MSG_UNKNOWN_DEV		26
 
 #define	ERR_DESCRIPTOR		<-1
 #define	ERR_CONFIG		<-2

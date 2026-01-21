@@ -101,6 +101,11 @@ m18	.asc "HID:KEYBOARD DETECTED",13,0
 m19	.asc "HID:MOUSE DETECTED",13,0
 m20	.asc "DEVICE NO: ",0
 m21	.asc 13, "PLEASE PRESS KEY",13, 0
+m22	.asc "UNKNOWN IFC TYPE: ",0
+m23	.asc "UNKNOWN HID CLASS: ",0
+m24	.asc "UNKNOWN HID PROTO: ",0
+m25	.asc "IFC DETECTED",13,0
+m26	.asc "UNKNOWN DEVICE CLASS: ",0
 
 e0	.asc "ERROR GETTING DESCRIPTOR",13,0
 e1	.asc "ERROR GETTING CONFIGURATION",13,0
@@ -116,11 +121,13 @@ e10	.asc "UNKNOWN DEVICE",13,0
 
 idxl	.byt <m0, <m1, <m2, <m3, <m4, <m5, <m6, <m7, <m8
 	.byt <m9, <m10, <m11, <m12, <m13, <m14, <m15, <m16
-	.byt <m17, <m18, <m19, <m20, <m21
+	.byt <m17, <m18, <m19, <m20, <m21, <m22, <m23, <m24
+	.byt <m25, <m26
 
 idxh	.byt >m0, >m1, >m2, >m3, >m4, >m5, >m6, >m7, >m8
 	.byt >m9, >m10, >m11, >m12, >m13, >m14, >m15, >m16
-	.byt >m17, >m18, >m19, >m20, >m21
+	.byt >m17, >m18, >m19, >m20, >m21, >m22, >m23, >m24
+	.byt >m25, >m26
 
 errl	.byt <e0, <e1, <e2, <e3, <e4, <e5, <e6, <e7, <e8
 	.byt <e9, <e10
