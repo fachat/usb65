@@ -768,9 +768,13 @@ queryusbdevice .(
 	; wait for end of sampling
 	; Note: appnotes says SAMPLEBUS is cleared when sampling finished
 	; however, it cannot be read. Other code just reads HSRL without further
-	; ado. We wait for one frame
-	lda #1	
-	jsr pause
+	; ado. 
+	; We used to wait for one frame, but as queryusbdevice is called from 
+	; the poll routine as long as no device is attached, it was slowing down
+	; the normal machine considerably. All other uses already have a pause in front.
+	;
+	;	lda #1	
+	;	jsr pause
 
 	; check bus status
 	rreg(rHRSL)
