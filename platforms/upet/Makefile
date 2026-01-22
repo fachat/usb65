@@ -2,6 +2,8 @@
 MAIN=upetusb
 ROM=petrom4ldr
 
+DRIVERADDRESS=4096
+
 MAIN_O65=petusb4.o65 
 TSR_O65=petusbdrv.o65 overlayscreen.o65
 

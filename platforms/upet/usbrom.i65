@@ -1,0 +1,37 @@
+/*
+ * This include file defines the linkage needed
+ * to include the USB driver into your own system
+ *
+ * It requires a start address for the USB driver
+ * named
+ *
+ *	USB_DRIVERADDRESS
+ *
+ * From that on the following are defined:
+ *
+ * Init the USB hardware and driver
+ *	usb_init	
+ *
+ * Polling call to be called approp. 50/sec
+ *	usb_polldev	
+ *
+ * Where the external code needs to store the 
+ * callback to pause for about 1/50th of a second 
+ *	usb_pause_cb_addr
+ *
+ * Where the external code needs to store the
+ * callback to print a char from keyboard (or cursor)
+ *	usb_print_cb_addr
+ *
+ */
+
+#ifndef _USBROM_I65
+#define _USBROM_I65
+
+usb_drv_init		=USB_DRIVERADDRESS
+usb_drv_polldev		=USB_DRIVERADDRESS+3
+usb_drv_pause_cb_addr	=USB_DRIVERADDRESS+6+1
+usb_drv_print_cb_addr	=USB_DRIVERADDRESS+9+1
+
+#endif
+

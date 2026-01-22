@@ -62,13 +62,22 @@ dbg_ptr		.word 0
 
 	.text
 
+USB_DRIVERADDRESS=*
+#include "usbrom.i65"
 	.(
 
+	.assert * == usb_drv_init, "usb_init not at correct address"
 	jmp init
-	jmp do_usb_polldev
+
+	.assert * == usb_drv_polldev, "usb_polldev not at correct address"
+	jmp usb_polldev
+
+	.assert *+1 == usb_drv_pause_cb_addr, "usb_pause cb addr not at correct address"
 &pause	; callback from driver to wait for a certain amount
 	; real address is patched in by companion
 	jmp return
+
+	.assert *+1 == usb_drv_print_cb_addr, "usb_pause cb addr not at correct address"
 printc2	; callback to append a HID key (keyboard, or cursor from mouse)
 	; real address is patched in by companion
 	jmp return
@@ -100,8 +109,6 @@ hwfound
 	.)
 return rts
 
-do_usb_polldev
-	jmp usb_polldev
 	; callback from debug code. Unused here
 +waitkey .(
 	rts
@@ -125,8 +132,7 @@ v15	ldy #MSG_V15
 ; callback from the keyboard code
 ; ac contains key from keyboard (in PETSCII)
 &usb_kbd_rx_key_cb .(
-	jsr printc2
-	rts
+	jmp printc2
 	.)
 	
 

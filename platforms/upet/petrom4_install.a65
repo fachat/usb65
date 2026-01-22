@@ -31,17 +31,16 @@
 ;------------------------------------------------
 ; install the USB code
 usb_install .(
-
 	; --------------------------
 	; setup the core driver to call back into our companion
-	lda #<pause_a
-	sta driver_pause_a
-	lda #>pause_a
-	sta driver_pause_a+1
-	lda #<print_a
-	sta driver_print_a
-	lda #>print_a
-	sta driver_print_a+1
+	lda #<usb_pause_cb
+	sta usb_drv_pause_cb_addr
+	lda #>usb_pause_cb
+	sta usb_drv_pause_cb_addr+1
+	lda #<usb_print_cb
+	sta usb_drv_print_cb_addr
+	lda #>usb_print_cb
+	sta usb_drv_print_cb_addr+1
 
 	; --------------------------
 	; install driver code into IRQ	
@@ -119,17 +118,21 @@ usb_init .(
 
 	lda #<-1
 	sta lock
-	jsr driver_init
+	jsr usb_drv_init
 
+	bcs locked
+	jsr usb_install
+	
 	ldx #MAP_BAS
 	stx MAPREG
 
-	bcs locked
 	plp
 	clc
-	jmp usb_install
-
-locked 	plp
+	rts
+locked 	
+	ldx #MAP_BAS
+	stx MAPREG
+	plp
 	sec
 	rts
 	.)

@@ -12,7 +12,10 @@
 COMPADDR	=$df00
 INSTADDR	=$9000		; needs to be in upper 32k as it remaps lower 32k
 ;DRIVERADDR	=$079000	; bank 15 = $078000 + $1000 DRIVERADDR
-DRIVERADDR	=$1000		; bank 15 = $078000 + $1000 DRIVERADDR
+;DRIVERADDR	=$1000		; bank 15 = $078000 + $1000 DRIVERADDR
+
+USB_DRIVERADDRESS=$1000
+#include "usbrom.i65"
 
 MAP_USB		=15
 MAP_BAS		=0
@@ -20,12 +23,6 @@ MAPREG		=$e802
 
 lock		=$0700ff
 VCOUNT		=$99
-
-driver_poll	=DRIVERADDR+3
-driver_init	=DRIVERADDR+0
-
-driver_pause_a	=DRIVERADDR+6+1
-driver_print_a	=DRIVERADDR+9+1
 
 	.word $0401
 	*=$0401
@@ -73,7 +70,7 @@ pc1a	lda petrom_install,y
 
 	ldx #0
 pc2	lda usbrom,x
-	sta DRIVERADDR+(MAP_USB << 15),x
+	sta USB_DRIVERADDRESS+(MAP_USB << 15),x
 	inx
 	cpx #end - usbrom
 	bne pc2

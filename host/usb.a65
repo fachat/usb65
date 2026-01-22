@@ -328,7 +328,7 @@ nodev	clc
 	rts
 no_hw	lda #ERR_NO_HW
 	sec
-err	DEXIT("USB_POLLDEV X")
+	DEXIT("USB_POLLDEV X")
 	rts
 	.)
 
