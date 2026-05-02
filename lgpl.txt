@@ -1,18 +1,4 @@
 
- NOTE! The actual hardware driver, i.e. the part that lets the USB Host/Device
- Driver talk to the hardware - like the sl811_host.a65 or sl811_dev.a65 files -
- is not considered derived work, but part of the library (the driver).
- This holds for all other hardware drivers to be included with this
- library, they are considered integral part of the library. Also the
- interface between the hardware driver and other code parts are 
- considered internal interfaces. 
-
- I.e. any hardware driver for this library falls under the GPL, not the LGPL,
- and must be open sourced according to the terms of the GPL.
-
- André Fachat
-
-----------------------------------------
 
                    GNU LESSER GENERAL PUBLIC LICENSE
                        Version 3, 29 June 2007

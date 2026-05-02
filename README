@@ -88,3 +88,9 @@ Device quirks
 
 - (all resolved at this time with the limited amount of devices tested)
 
+License
+-------
+
+This code is published under LGPL terms, so that it can be used in 
+non-GPL code, but any changes to it must be published.
+
